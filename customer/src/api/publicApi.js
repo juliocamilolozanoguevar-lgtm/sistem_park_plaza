@@ -26,11 +26,35 @@ export async function createReservation(payload) {
   });
 }
 
+export async function createClient(payload) {
+  return request("/public/clients", {
+    method: "POST",
+    body: payload
+  });
+}
+
 export async function getReservation(code, documentNumber) {
   const query = new URLSearchParams();
   if (documentNumber) query.append("documentNumber", documentNumber);
   const qs = query.toString();
   return request(`/public/reservations/${code}${qs ? '?' + qs : ''}`);
+}
+
+export async function recoverReservations(documentNumber) {
+  const query = new URLSearchParams();
+  if (documentNumber) query.append("documentNumber", documentNumber);
+  return request(`/public/reservations/recover?${query.toString()}`);
+}
+
+export async function getPublicEventSpaces() {
+  return request("/public/events/spaces");
+}
+
+export async function createPublicEvent(payload) {
+  return request("/public/events", {
+    method: "POST",
+    body: payload
+  });
 }
 
 export async function getServices() {

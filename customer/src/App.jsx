@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Banknote, BedDouble, CalendarDays, Car, Check, ChevronRight, ClipboardList, Clock3, ConciergeBell, CreditCard, Download, HelpCircle, Home, Minus, Plus, QrCode, ShoppingBag, Smartphone, Sparkles, SunMedium, Users, Waves, Map, BookOpen, Wifi, Coffee, FileText, CheckCircle2, Utensils, ChefHat, Bike } from "lucide-react";
+import { ArrowLeft, Banknote, BedDouble, CalendarDays, Car, Check, ChevronRight, ClipboardList, Clock3, ConciergeBell, CreditCard, Download, HelpCircle, Home, Minus, Plus, QrCode, Search, ShoppingBag, Smartphone, Sparkles, SunMedium, Users, Waves, Map, BookOpen, Wifi, Coffee, FileText, CheckCircle2, Utensils, ChefHat, Bike } from "lucide-react";
 import { ExperienceFlow } from "./ExperienceFlows";
 import { ModernHome, ModernWelcome } from "./ModernExperience";
 import { apiBaseUrl } from "./config/api";
 import { connectCustomerRealtime, realtime } from "./api/realtime";
-import { getGuestProfile, loginGuest } from "./api/authApi";
-import { createEvent, getEventSpaces, getEvents } from "./api/eventsApi";
+import { getGuestProfile, loginCustomer, loginGuest } from "./api/authApi";
+import { getEvents } from "./api/eventsApi";
 import { getConsumptions } from "./api/consumptionsApi";
 import { createOrder, getMenu, getOrders } from "./api/ordersApi";
-import { createReservation, getServiceExtras, getServicePlans, getServices } from "./api/publicApi";
+import { createClient, createPublicEvent, createReservation, getPublicEventSpaces, getServiceExtras, getServicePlans, getServices, recoverReservations } from "./api/publicApi";
+import { createServiceReservation, getCustomerServiceReservations } from "./api/servicesApi";
 const serviceImages = {
   HOSPEDAJE: "/images/experiences/hospedaje.webp",
   PISCINA: "/images/experiences/piscina.webp",
@@ -16,6 +17,26 @@ const serviceImages = {
   EVENTOS: "/images/experiences/eventos.webp"
 };
 const menuImages = { CEVICHE: "/images/menu/ceviche.webp", LOMO: "/images/menu/lomo.webp", JUANE: "/images/menu/juane.webp", PISCO: "/images/menu/pisco.webp", SELVA: "/images/menu/selva.webp" };
+const productImageHints = [
+  [["ARROZ", "JUANE", "POLLO", "LECHUGA", "PIMIENTA"], "/images/menu/juane.webp"],
+  [["ACEITE", "LOMO", "CARNE", "FIDEOS", "TALLARIN"], "/images/menu/lomo.webp"],
+  [["AZUCAR", "LIMON", "GASEOSA", "SELVA", "JUGO"], "/images/menu/selva.webp"],
+  [["PISCO", "GIN", "RON", "CERVEZA", "BEBIDA", "COCTEL"], "/images/menu/pisco.webp"],
+  [["PESCADO", "CEVICHE", "MARISCO"], "/images/menu/ceviche.webp"]
+];
+const fallbackMenuImage = "/images/menu/juane.webp";
+const menuPresentationHints = [
+  { keys: ["ACEITE"], name: "Lomo saltado de la casa", category: "Fondos - Cocina", description: "Lomo salteado con papas doradas y arroz.", image: "/images/menu/lomo.webp", tags: ["Caliente", "Favorito"] },
+  { keys: ["ARROZ"], name: "Arroz chaufa amazónico", category: "Fondos - Cocina", description: "Arroz salteado con toque regional.", image: "/images/menu/juane.webp", tags: ["Regional"] },
+  { keys: ["AZUCAR"], name: "Refresco natural de camu camu", category: "Bebidas - Cocina", description: "Bebida fresca de fruta regional.", image: "/images/menu/selva.webp", tags: ["Frío"] },
+  { keys: ["FIDEOS", "TALLARIN"], name: "Tallarines saltados", category: "Fondos - Cocina", description: "Tallarines salteados con verduras y salsa de la casa.", image: "/images/menu/lomo.webp", tags: ["Caliente"] },
+  { keys: ["LECHUGA"], name: "Ensalada fresca Park Plaza", category: "Entradas - Cocina", description: "Ensalada ligera con vegetales frescos.", image: "/images/menu/juane.webp", tags: ["Ligero"] },
+  { keys: ["PIMIENTA"], name: "Pollo grillado con guarnición", category: "Fondos - Cocina", description: "Pollo a la plancha con guarnición de temporada.", image: "/images/menu/juane.webp", tags: ["Casa"] },
+  { keys: ["PESCADO"], name: "Ceviche regional", category: "Entradas - Cocina", description: "Pescado fresco con cítricos y acompañamientos.", image: "/images/menu/ceviche.webp", tags: ["Fresco"] },
+  { keys: ["LIMON"], name: "Limonada frozen", category: "Bebidas - Bar", description: "Limonada helada preparada al momento.", image: "/images/menu/selva.webp", tags: ["Sin alcohol"] },
+  { keys: ["PISCO"], name: "Pisco sour clásico", category: "Cocteles - Bar", description: "Cóctel clásico peruano.", image: "/images/menu/pisco.webp", tags: ["Clásico"] },
+  { keys: ["GINEBRA", "GIN"], name: "Gin tonic amazónico", category: "Cocteles - Bar", description: "Gin tonic con notas cítricas.", image: "/images/menu/pisco.webp", tags: ["Bar"] }
+];
 const icons = { HOSPEDAJE: BedDouble, PISCINA: Waves, MIRADOR: SunMedium, EVENTOS: Sparkles };
 const initialIdentity = { reservationCode: "", documentType: "DNI", documentNumber: "", firstName: "", lastName: "", phone: "", email: "" };
 
@@ -63,9 +84,17 @@ export function App() {
     const version = ++sessionVersion.current;
     const token = localStorage.getItem("pp_customer_token");
     const storedClient = JSON.parse(localStorage.getItem("pp_customer_client") || "null");
-    if (!token) { setExperience(null); return null; }
+    if (!token) {
+      if (storedClient?.documentNumber) {
+        const value = await buildPublicExperience(storedClient.documentNumber).catch(() => null);
+        if (version === sessionVersion.current) setExperience(value);
+        return value;
+      }
+      setExperience(null);
+      return null;
+    }
     try {
-      const value = await buildGuestExperience();
+      const value = storedClient?.customerScope ? await buildCustomerExperience(storedClient) : await buildGuestExperience();
       const sameSession = version === sessionVersion.current && token === localStorage.getItem("pp_customer_token");
       if (sameSession) setExperience(value);
       return sameSession ? value : null;
@@ -88,6 +117,16 @@ export function App() {
   function continueWithCustomer(next) {
     const savedClient = JSON.parse(localStorage.getItem("pp_customer_client") || "null");
     const token = localStorage.getItem("pp_customer_token");
+    const needsRegisteredClient = (next === "checkout" && selection?.service?.code === "HOSPEDAJE") || next === "event-confirmation";
+    if (needsRegisteredClient) {
+      if (savedClient?.reservationDraftClient && savedClient?.documentNumber && savedClient?.firstName && savedClient?.lastName) {
+        if (!client) setClient(savedClient);
+        go(next);
+        return;
+      }
+      requireIdentity(next);
+      return;
+    }
     if (token) {
       if (!client) setClient(savedClient);
       go(next);
@@ -98,12 +137,21 @@ export function App() {
   function completeIdentity(value) { const next = identityNext || "home"; setIdentityNext(""); activateClient(value); go(next); }
   function resetExperience(next = "welcome") { sessionVersion.current += 1; localStorage.removeItem("pp_customer_token"); localStorage.removeItem("pp_customer_client"); ["pp_customer_selection", "pp_customer_identity_draft", "pp_customer_identity_next", "pp_customer_recovery_document"].forEach((key) => sessionStorage.removeItem(key)); setClient(null); setExperience(null); setSelection(null); setPaymentResult(null); setIdentityDraft(initialIdentity); setIdentityNext(""); setRecoveryDocument(""); setNotice(""); go(next); }
 
+  async function registerPublicCustomer(draftClient) {
+    const dbClient = await createClient(draftClient);
+    const session = await loginCustomer(dbClient.documentNumber);
+    const savedClient = { ...draftClient, ...dbClient, ...(session.client || {}), reservationDraftClient: true, customerScope: true };
+    localStorage.setItem("pp_customer_token", session.token);
+    localStorage.setItem("pp_customer_client", JSON.stringify(savedClient));
+    return savedClient;
+  }
+
   return (
     <div className={`customer-app ${screen === "welcome" ? "welcome-active" : ""}`}>
       {notice ? <div className="toast" onClick={() => setNotice("")}>{notice}</div> : null}
-      {screen === "welcome" ? <ModernWelcome onCredential={() => go("home")} onRecover={() => go("recover")} /> : null}
-      {screen === "identify" ? <Identify form={identityDraft} setForm={setIdentityDraft} onBack={() => go(identityNext === "checkout" || identityNext === "event-confirmation" ? "experience-flow" : "welcome")} onDone={completeIdentity} reservationFlow={identityNext === "checkout" || identityNext === "event-confirmation"} /> : null}
-      {screen === "recover" ? <RecoverReservation documentNumber={recoveryDocument} setDocumentNumber={setRecoveryDocument} onBack={() => go("welcome")} onDone={(value) => { activateClient(value); go("reservations"); }} /> : null}
+      {screen === "welcome" ? <ModernWelcome onCredential={async (draftClient) => { if (draftClient) { try { const saved = await registerPublicCustomer(draftClient); activateClient(saved); } catch (error) { showError(error); return; } } go("home"); }} onRecover={() => go("recover")} /> : null}
+      {screen === "identify" ? <Identify form={identityDraft} setForm={setIdentityDraft} onBack={() => go(identityNext === "checkout" || identityNext === "event-confirmation" ? "experience-flow" : "welcome")} onDone={completeIdentity} reservationFlow={identityNext === "checkout" || identityNext === "event-confirmation"} registrationFlow={(identityNext === "checkout" && selection?.service?.code === "HOSPEDAJE") || identityNext === "event-confirmation"} /> : null}
+      {screen === "recover" ? <RecoverReservation documentNumber={recoveryDocument} setDocumentNumber={setRecoveryDocument} onBack={() => go("welcome")} onDone={(value) => { activateClient(value.client); setExperience(value.experience); go("reservations"); }} /> : null}
       {screen === "home" ? <ModernHome client={client} catalog={catalog} experience={experience} onService={(service) => { setSelection({ service }); go("experience-flow"); }} onExperience={() => go("experience")} onReservations={() => go("reservations")} onExit={() => resetExperience("welcome")} /> : null}
       {screen === "experience-flow" ? <ExperienceFlow service={selection?.service} catalog={catalog} hasExistingParking={Boolean((experience?.bookings || []).some((item) => (item.vehicles || []).length || item.parkingSpace || item.parkingSpaces?.length))} onBack={() => go("home")} onCheckout={(value) => { setSelection(value); continueWithCustomer("checkout"); }} onEventCheckout={(eventDraft) => { setSelection({ eventDraft }); continueWithCustomer("event-confirmation"); }} /> : null}
       {screen === "event-quote" ? <EventQuote catalog={catalog} onBack={() => go("home")} onDone={async (result) => { setPaymentResult({ event: result }); await refreshExperience(); go("event-success"); }} /> : null}
@@ -122,15 +170,33 @@ export function App() {
   );
 }
 
-function RecoverReservation({ onBack, documentNumber, setDocumentNumber }) {
+function RecoverReservation({ onBack, documentNumber, setDocumentNumber, onDone }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  async function submit(event) { event.preventDefault(); setBusy(true); setError("Recuperación automática no disponible en esta versión. Ingresa con tu código de reserva y documento desde Identificarme."); setBusy(false); }
-  return <Page title="Recupera tu reserva" subtitle="Esta opción se mantiene visible para la demo, pero aún no emite sesiones automáticas." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Recuperación en preparación" text="Por seguridad, esta versión no genera token desde documento únicamente."/><Field label="DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Revisando…" : "Ver disponibilidad"}</button><small className="center">Usa Identificarme con código de reserva y documento.</small></form></Page>;
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const recovered = await recoverReservations(documentNumber);
+      const session = await loginCustomer(recovered.client.documentNumber);
+      const savedClient = { ...recovered.client, ...(session.client || {}), reservationDraftClient: true, customerScope: true };
+      localStorage.setItem("pp_customer_token", session.token);
+      localStorage.setItem("pp_customer_client", JSON.stringify(savedClient));
+      const orders = await getOrders().catch(() => []);
+      onDone({ client: savedClient, experience: { ...normalizeRecoveredExperience(recovered), orders } });
+    } catch (cause) {
+      setError(cause.message || "No encontramos reservas con ese documento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <Page title="Recupera tu reserva" subtitle="Consulta tus reservas registradas en el hotel con tu documento." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Búsqueda en el sistema" text="Si el documento existe, mostraremos el titular y sus reservas guardadas."/><Field label="DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Revisando…" : "Recuperar mi reserva"}</button></form></Page>;
 }
 
-function Identify({ onBack, onDone, form, setForm, reservationFlow }) {
+function Identify({ onBack, onDone, form, setForm, reservationFlow, registrationFlow }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  async function submit(event) { event.preventDefault(); setBusy(true); setError(""); try { const result = await loginGuest({ reservationCode: form.reservationCode, documentNumber: form.documentNumber }); const savedClient = { ...(result.client || {}), ...(result.stay ? { stay: result.stay } : {}), documentNumber: form.documentNumber, reservationCode: form.reservationCode }; localStorage.setItem("pp_customer_token", result.token); localStorage.setItem("pp_customer_client", JSON.stringify(savedClient)); connectCustomerRealtime(); onDone(savedClient); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  async function submit(event) { event.preventDefault(); setBusy(true); setError(""); try { if (registrationFlow) { const dbClient = await createClient({ documentType: form.documentType || "DNI", documentNumber: form.documentNumber, firstName: form.firstName, lastName: form.lastName, phone: form.phone, email: form.email }); const session = await loginCustomer(dbClient.documentNumber); const savedClient = { ...dbClient, ...(session.client || {}), reservationDraftClient: true, customerScope: true }; localStorage.setItem("pp_customer_token", session.token); localStorage.setItem("pp_customer_client", JSON.stringify(savedClient)); onDone(savedClient); return; } const result = await loginGuest({ reservationCode: form.reservationCode, documentNumber: form.documentNumber }); const savedClient = { ...(result.client || {}), ...(result.stay ? { stay: result.stay } : {}), documentNumber: form.documentNumber, reservationCode: form.reservationCode }; localStorage.setItem("pp_customer_token", result.token); localStorage.setItem("pp_customer_client", JSON.stringify(savedClient)); connectCustomerRealtime(); onDone(savedClient); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  if (registrationFlow) return <Page title="Datos del titular" subtitle="Registra al cliente que aparecerá en la reserva." onBack={onBack}><form className="card form" onSubmit={submit}><div className="segments"><button type="button" className={form.documentType === "DNI" ? "active" : ""} onClick={() => setForm({ ...form, documentType: "DNI" })}>Nacional · DNI</button><button type="button" className={form.documentType !== "DNI" ? "active" : ""} onClick={() => setForm({ ...form, documentType: "CE" })}>Extranjero</button></div><Info icon={QrCode} title="Reserva pública segura" text="Estos datos quedarán guardados para asociar tus reservas en el panel del hotel."/><Field label="Número de documento" value={form.documentNumber} onChange={(documentNumber) => setForm({ ...form, documentNumber })}/><div className="two"><Field label="Nombres" value={form.firstName} onChange={(firstName) => setForm({ ...form, firstName })}/><Field label="Apellidos" value={form.lastName} onChange={(lastName) => setForm({ ...form, lastName })}/></div><Field label="Celular" value={form.phone} onChange={(phone) => setForm({ ...form, phone })}/><Field label="Correo para comprobantes" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })}/>{error ? <p className="error">{error}</p> : null}<button className="primary" disabled={busy}>{busy ? "Guardando…" : "Continuar a confirmar reserva"}</button></form></Page>;
   return <Page title={reservationFlow ? "Identifica tu estadía" : "Identifica al huésped"} subtitle="Ingresa con una estadía activa. El hotel valida tu identidad con el código de reserva y tu documento." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Acceso de huésped" text="El portal usará un token seguro; tus pedidos y consumos se asociarán a tu estadía activa."/><Field label="Código de reserva" value={form.reservationCode || ""} onChange={(reservationCode) => setForm({ ...form, reservationCode })}/><Field label="Número de documento" value={form.documentNumber} onChange={(documentNumber) => setForm({ ...form, documentNumber })}/>{error ? <p className="error">{error}</p> : null}<button className="primary" disabled={busy}>{busy ? "Validando…" : "Entrar a mi experiencia"}</button></form></Page>;
 }
 
@@ -177,6 +243,10 @@ function Checkout({ selection, onBack, onPaid }) {
         }
 
         const backendRes = await createReservation(payload);
+        const session = await loginCustomer(backendRes.client?.documentNumber || payload.documentNumber);
+        const savedClient = { ...client, ...(backendRes.client || {}), ...(session.client || {}), reservationDraftClient: true, customerScope: true };
+        localStorage.setItem("pp_customer_token", session.token);
+        localStorage.setItem("pp_customer_client", JSON.stringify(savedClient));
         result = { 
           booking: { 
             ...backendRes,
@@ -184,8 +254,18 @@ function Checkout({ selection, onBack, onPaid }) {
           } 
         };
       } else {
-        const pendingMessage = selection?.service?.code === "PISCINA" ? "Integración de reserva online de piscina en preparación." : selection?.service?.code === "MIRADOR" ? "Integración de reserva online de mirador en preparación." : "Esta reserva online estará disponible próximamente.";
-        throw new Error(pendingMessage);
+        if (!selection?.slotId || !selection?.planId) throw new Error("Selecciona un horario y plan disponible.");
+        const backendRes = await createServiceReservation({
+          serviceType: selection.service.code,
+          date: selection.date,
+          slotId: selection.slotId,
+          planId: selection.planId,
+          adults: selection.adults,
+          children: selection.children,
+          extras: (selection.extras || []).map((item) => ({ id: item.id, quantity: item.quantity || 1 })),
+          notes: selection.notes || ""
+        });
+        result = { booking: normalizeServiceBooking(backendRes) };
       }
       await onPaid(result); 
     } catch (cause) { 
@@ -220,7 +300,7 @@ function EventConfirmation({ draft, onBack, onPaid }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   if (!draft) return <Page title="Confirma tu evento" subtitle="No encontramos la configuración del evento." onBack={onBack}/>;
   const due = draft.paymentMethod === "CAJA HOTEL" ? 0 : draft.payMode === "FULL" ? Number(draft.estimatedTotal || 0) : Number(draft.estimatedTotal || 0) / 2;
-  async function submit() { setBusy(true); setError(""); try { const result = await createEvent({ spaceId: Number(draft.spaceId), name: draft.name, type: draft.type, startsAt: draft.startsAt, guests: Number(draft.guests), notes: draft.notes }); await onPaid(result); } catch (cause) { setError(cause.message || "No se pudo registrar el evento"); } finally { setBusy(false); } }
+  async function submit() { setBusy(true); setError(""); try { const savedClient = JSON.parse(localStorage.getItem("pp_customer_client") || "null"); const result = await createPublicEvent({ ...(savedClient || {}), spaceId: Number(draft.spaceId), name: draft.name, type: draft.type, startsAt: draft.startsAt, endsAt: draft.endsAt, guests: Number(draft.guests), notes: draft.notes }); await onPaid(result); } catch (cause) { setError(cause.message || "No se pudo registrar el evento"); } finally { setBusy(false); } }
   return <Page title="Confirma tu evento" subtitle="Revisa el resumen y registra la reserva cuando estés listo." onBack={onBack}><JourneySteps current={3}/><section className="card"><small>EVENTO PRIVADO</small><h2>{draft.name}</h2><Row label="Fecha y horario" value={`${formatDate(draft.date)} · ${draft.start}–${draft.end}`}/><Row label="Invitados" value={`${draft.guests} personas`}/><Row label="Ambiente" value={draft.space?.name || "Ambiente seleccionado"}/><Row label="Montaje y temática" value={`${(draft.layouts || []).length} distribución(es) · ${draft.theme || "Por definir"}`}/><Row label="Banquete y bar" value={`${(draft.catering || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0)} productos`}/><Row label="Cochera" value={`${(draft.vehicles || []).length} vehículo(s)`}/><Row label="Total estimado" value={`S/ ${Number(draft.estimatedTotal || 0).toFixed(2)}`}/><Row label="Forma de reserva" value="Adelanto obligatorio del 50%"/><Row total label={draft.paymentMethod === "CAJA HOTEL" ? "Pago en Recepción" : "Pagas ahora"} value={draft.paymentMethod === "CAJA HOTEL" ? "Pendiente" : `S/ ${due.toFixed(2)}`}/>{draft.paymentMethod === "CAJA HOTEL" ? <Info icon={Banknote} title="Validación en Recepción" text="La fecha se bloqueará cuando el personal valide el adelanto requerido."/> : null}</section>{error ? <p className="error">{error}</p> : null}<button className="sticky primary" disabled={busy} onClick={submit}>{busy ? "Registrando…" : draft.paymentMethod === "CAJA HOTEL" ? "Solicitar pago en Recepción" : `Confirmar evento · S/ ${due.toFixed(2)}`}</button></Page>;
 }
 
@@ -254,8 +334,57 @@ function PracticalInfo({ serviceCode }) {
 }
 
 function MyReservations({ experience, onBack, onPay, onPayEvent, onAdd }) {
-  const bookings = experience?.bookings || []; const events = experience?.events || [];
-  return <Page title="Mis reservas" subtitle="Fechas, pagos y próximos pasos, sin términos complicados." onBack={onBack}><StatusLegend/>{!bookings.length && !events.length ? <div className="empty-friendly"><CalendarDays/><h2>Aún no tienes reservas</h2><p>Elige hospedaje, piscina, mirador o diseña un evento.</p><button className="primary" onClick={onAdd}>Explorar experiencias</button></div> : null}<div className="reservation-list">{bookings.map((item) => { const pending = Number(item.balance) > 0; const checkedIn=item.status === "CHECKED_IN" || item.accessStatus === "INGRESO_VALIDADO"; return <article key={`booking-${item.id}`}><div className="reservation-top"><div><small>{item.code}</small><h2>{serviceName(item.serviceCode).replace("tu ", "")}</h2></div><FriendlyStatus value={pending ? "PENDIENTE_PAGO" : checkedIn ? "ACTIVO" : "LISTO_INGRESO"}/></div><div className="reservation-facts"><span><CalendarDays/>{formatDate(item.date)}</span><span><Clock3/>{item.slot}</span><span><Users/>{item.people} persona(s)</span></div><Row label="Total" value={`S/ ${item.total}`}/><Row label="Pagado" value={`S/ ${item.paid}`}/>{pending ? <><Row label="Saldo pendiente" value={`S/ ${item.balance}`}/><div className="next-action"><b>Siguiente paso: completar pago</b><p>La fecha y los cupos están reservados. El QR continuará pendiente hasta completar el saldo.</p><button className="gold" onClick={() => onPay(item)}>Elegir método y pagar</button></div></> : checkedIn ? <div className="next-action ready"><b>Ingreso validado</b><p>Tu experiencia está habilitada y ya puedes utilizar sus servicios y consumos.</p></div> : <div className="next-action ready"><b>Pago completo · listo para ingreso</b><p>Presenta tu documento y QR. Recepción o el control de acceso debe validar tu entrada.</p></div>}</article>; })}{events.map((item) => <article key={`event-${item.id}`}><div className="reservation-top"><div><small>{item.code || `EVT-${item.id}`}</small><h2>{item.name}</h2></div><FriendlyStatus value={item.status}/></div><div className="reservation-facts"><span><CalendarDays/>{formatDate(item.startsAt)}</span><span><Users/>{item.guests} invitados</span></div><Row label="Estado" value={item.status === "COTIZACION" ? "Cotización solicitada" : item.status}/><Row label="Precio final" value={Number(item.price || 0) > 0 ? `S/ ${Number(item.price).toFixed(2)}` : "Por definir"}/><div className="next-action"><b>{item.status === "COTIZACION" ? "Solicitud registrada" : "Seguimiento de evento"}</b><p>{item.status === "COTIZACION" ? "El equipo revisará disponibilidad, aforo y precio. No hay pago confirmado desde el portal." : "Consulta con Recepción para completar los siguientes pasos."}</p></div></article>)}</div></Page>;
+  const bookings = experience?.bookings || [];
+  const events = experience?.events || [];
+  const orders = experience?.orders || [];
+  const clientName = clientFullName(experience?.client);
+  const linkedOrderIds = new Set([...bookings.flatMap((item) => ordersForBooking(orders, item)), ...events.flatMap((item) => ordersForEvent(orders, item))].map((order) => order.id));
+  const unlinkedOrders = orders.filter((order) => !linkedOrderIds.has(order.id));
+  return <Page title="Mis reservas" subtitle="Fechas, pagos y próximos pasos, sin términos complicados." onBack={onBack}>{clientName ? <section className="reservation-client-card"><small>Titular registrado</small><b>{clientName}</b><span>{experience?.client?.documentNumber ? `DNI ${experience.client.documentNumber}` : "Documento no registrado"}</span></section> : null}<StatusLegend/>{!bookings.length && !events.length ? <div className="empty-friendly"><CalendarDays/><h2>Aún no tienes reservas</h2><p>Elige hospedaje, piscina, mirador o diseña un evento.</p><button className="primary" onClick={onAdd}>Explorar experiencias</button></div> : null}<div className="reservation-list">{bookings.map((item, index) => <BookingCard item={item} client={experience?.client} orders={[...ordersForBooking(orders, item), ...(index === 0 ? unlinkedOrders : [])]} onPay={onPay} key={`booking-${item.id}`}/>)}{events.map((item, index) => <EventCard item={item} client={experience?.client} orders={[...ordersForEvent(orders, item), ...(!bookings.length && index === 0 ? unlinkedOrders : [])]} key={`event-${item.id}`}/>)}</div></Page>;
+}
+
+function BookingCard({ item, client, orders, onPay }) {
+  const pending = Number(item.balance) > 0;
+  const checkedIn = item.status === "CHECKED_IN" || item.accessStatus === "INGRESO_VALIDADO";
+  return <article><div className="reservation-top"><div><small>{item.code}</small><h2>{serviceName(item.serviceCode).replace("tu ", "")}</h2></div><FriendlyStatus value={pending ? "PENDIENTE_PAGO" : checkedIn ? "ACTIVO" : "LISTO_INGRESO"}/></div><div className="reservation-facts"><span><CalendarDays/>{formatDate(item.date)}</span><span><Clock3/>{item.slot}</span><span><Users/>{item.people} persona(s)</span></div><ReservationDetailBlock booking={item} client={client}/><OrderSummary orders={orders}/><Row label="Total" value={`S/ ${Number(item.total || 0).toFixed(2)}`}/><Row label="Pagado" value={`S/ ${Number(item.paid || 0).toFixed(2)}`}/>{pending ? <><Row label="Saldo pendiente" value={`S/ ${Number(item.balance || 0).toFixed(2)}`}/><div className="next-action"><b>Siguiente paso: completar pago</b><p>La fecha y los cupos están reservados. El QR continuará pendiente hasta completar el saldo.</p><button className="gold" onClick={() => onPay(item)}>Elegir método y pagar</button></div></> : checkedIn ? <div className="next-action ready"><b>Ingreso validado</b><p>Tu experiencia está habilitada y ya puedes utilizar sus servicios y consumos.</p></div> : <div className="next-action ready"><b>Pago completo · listo para ingreso</b><p>Presenta tu documento y QR. Recepción o el control de acceso debe validar tu entrada.</p></div>}</article>;
+}
+
+function EventCard({ item, client, orders }) {
+  return <article><div className="reservation-top"><div><small>{item.code || `EVT-${item.id}`}</small><h2>{item.name}</h2></div><FriendlyStatus value={item.status}/></div><div className="reservation-facts"><span><CalendarDays/>{formatDate(item.startsAt)}</span><span><Users/>{item.guests} invitados</span></div><div className="reservation-detail-grid"><DetailItem label="Titular" value={clientFullName(client)}/><DetailItem label="Tipo" value={item.type}/><DetailItem label="Ambiente" value={item.space?.name}/><DetailItem label="Solicitado" value={item.notes}/></div><OrderSummary orders={orders}/><Row label="Estado" value={item.status === "COTIZACION" ? "Cotización solicitada" : item.status}/><Row label="Precio final" value={Number(item.price || 0) > 0 ? `S/ ${Number(item.price).toFixed(2)}` : "Por definir"}/><div className="next-action"><b>{item.status === "COTIZACION" ? "Solicitud registrada" : "Seguimiento de evento"}</b><p>{item.status === "COTIZACION" ? "El equipo revisará disponibilidad, aforo y precio. No hay pago confirmado desde el portal." : "Consulta con Recepción para completar los siguientes pasos."}</p></div></article>;
+}
+
+function ReservationDetailBlock({ booking, client }) {
+  const extras = (booking.extras || []).filter((item) => Number(item.quantity || 0) > 0).map((item) => `${item.name}${Number(item.quantity || 0) > 1 ? ` x${item.quantity}` : ""}`);
+  const roomLabel = booking.serviceCode === "HOSPEDAJE" ? `Hab. ${booking.room?.number || booking.roomId || "asignada"}` : serviceName(booking.serviceCode).replace("tu ", "");
+  return <div className="reservation-detail-grid"><DetailItem label="Titular" value={clientFullName(client)}/><DetailItem label="Habitación / servicio" value={roomLabel}/><DetailItem label="Tipo o plan" value={booking.room?.type?.name || booking.plan?.name || booking.planName}/><DetailItem label="Estadía" value={booking.checkOutDate ? `${formatDate(booking.date)} al ${formatDate(booking.checkOutDate)}` : `${formatDate(booking.date)} · ${booking.slot}`}/><DetailItem label="Adultos / niños" value={`${Number(booking.adults || 0)} adulto(s) · ${Number(booking.children || 0)} niño(s)`}/><DetailItem label="Extras" value={extras.length ? extras.join(", ") : "Sin extras solicitados"}/><DetailItem label="Solicitudes" value={booking.notes || "Sin solicitudes adicionales"}/></div>;
+}
+
+function DetailItem({ label, value }) {
+  return <div className="reservation-detail-item"><small>{label}</small><b>{value || "No registrado"}</b></div>;
+}
+
+function OrderSummary({ orders }) {
+  if (!orders?.length) return <div className="reservation-orders empty"><ShoppingBag/><span><b>Comida y pedidos</b><small>Sin pedidos solicitados todavía.</small></span></div>;
+  return <div className="reservation-orders"><div className="reservation-orders-title"><ShoppingBag/><span><b>Comida y pedidos</b><small>{orders.length} pedido(s) registrados</small></span></div>{orders.slice(0, 3).map((order) => <div className="reservation-order-line" key={order.id}><span><b>{order.code}</b><small>{order.area === "BARTENDER" ? "Bar" : "Restaurante"} · {order.items?.map((item) => `${item.quantity} ${item.name}`).join(", ") || "Sin detalle"}</small></span><strong>S/ {Number(order.total || 0).toFixed(2)}</strong></div>)}</div>;
+}
+
+function clientFullName(client) {
+  return [client?.firstName, client?.lastName].filter(Boolean).join(" ").trim();
+}
+
+function ordersForBooking(orders, booking) {
+  const roomId = booking?.room?.id || booking?.roomId;
+  const roomNumber = booking?.room?.number;
+  return (orders || []).filter((order) => {
+    const orderRoomId = order?.room?.id || order?.roomId || order?.stay?.roomId || order?.stay?.room?.id;
+    if (roomId && orderRoomId) return Number(orderRoomId) === Number(roomId);
+    const text = normalizedText(`${order?.notes || ""} ${order?.destinationLabel || ""} ${order?.room?.number || ""} ${order?.stay?.room?.number || ""}`);
+    return Boolean((roomNumber && text.includes(normalizedText(roomNumber))) || (booking?.code && text.includes(normalizedText(booking.code))));
+  });
+}
+
+function ordersForEvent(orders, event) {
+  return (orders || []).filter((order) => normalizedText(`${order?.notes || ""} ${order?.destinationLabel || ""}`).includes(normalizedText(event?.code || `EVT-${event?.id}`)) || normalizedText(`${order?.notes || ""} ${order?.destinationLabel || ""}`).includes(normalizedText(event?.name)));
 }
 
 function FriendlyStatus({ value }) { const labels = { PENDIENTE_PAGO: "Pago pendiente", LISTO_INGRESO: "Listo para ingreso", CONFIRMADA: "Confirmada", COTIZACION: "En cotización", ACTIVO: "Acceso activo", FINALIZADA: "Finalizada", CANCELADA: "Cancelada" }; return <span className={`friendly-status ${String(value || "").toLowerCase()}`}>{labels[value] || String(value || "").replaceAll("_", " ")}</span>; }
@@ -403,7 +532,7 @@ function RequestGroup({ req }) {
 
 function ProgressTracker({ type, order }) {
   const isOrder = type === "order";
-  const steps = isOrder ? ["Recibido", "Preparando", "Listo", "Entregado"] : ["Recibido", "Asignado", "Atendido"];
+  const steps = isOrder ? ["Recibido", "En preparación", "Listo", "Entregado"] : ["Recibido", "Asignado", "Atendido"];
   
   let current = 0;
   if (isOrder) {
@@ -467,11 +596,35 @@ function Directory({ onBack }) {
 
 function accessLabel(status) { return ({ ACTIVO: "ACCESO ACTIVO", LISTO_INGRESO: "LISTO PARA VALIDAR", PENDIENTE: "PAGO PENDIENTE", UTILIZADO: "INGRESO VALIDADO", FINALIZADO: "FINALIZADO", REVOCADO: "DESHABILITADO" })[status] || status; }
 function peopleLabel(value) { const count = Number(value || 1); return count === 1 ? "Acceso para 1 persona" : `Acceso para ${count} personas`; }
-function orderStatusLabel(status) { return ({ PENDIENTE: "Pedido recibido", EN_COCINA: "En cocina", PREPARANDO: "Preparando", LISTO: "Listo para entregar", ENTREGADO: "Entregado", CANCELADO: "Cancelado" })[status] || status; }
-function orderSteps(area) { return area === "BARTENDER" ? ["Recibido", "Preparando", "Listo", "Entregado"] : ["Recibido", "En cocina", "Preparando", "Listo", "Entregado"]; }
-function orderStepIndex(order) { const flow = order.area === "BARTENDER" ? ["PENDIENTE", "PREPARANDO", "LISTO", "ENTREGADO"] : ["PENDIENTE", "EN_COCINA", "PREPARANDO", "LISTO", "ENTREGADO"]; return Math.max(0, flow.indexOf(order.status)); }
+function orderStatusLabel(status) { return ({ PENDIENTE: "Pedido recibido", EN_COCINA: "En preparación", PREPARANDO: "En preparación", LISTO: "Listo para entregar", ENTREGADO: "Entregado", CANCELADO: "Cancelado" })[status] || status; }
+function orderSteps() { return ["Recibido", "En preparación", "Listo", "Entregado"]; }
+function orderStepIndex(order) { const flow = ["PENDIENTE", "PREPARANDO", "LISTO", "ENTREGADO"]; return order.status === "EN_COCINA" ? 1 : Math.max(0, flow.indexOf(order.status)); }
 
 function serviceName(code) { return ({ HOSPEDAJE: "tu hospedaje", PISCINA: "tu reserva de piscina", MIRADOR: "tu reserva de mirador", EVENTOS: "tu evento" })[code] || "tu servicio"; }
+function normalizedText(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+function menuPresentationFor(item) {
+  const text = normalizedText(`${item?.code || ""} ${item?.name || ""} ${item?.category || ""}`);
+  const hint = menuPresentationHints.find((entry) => entry.keys.some((key) => text.includes(key)));
+  if (!hint) return { ...item, category: item?.area === "BARTENDER" ? "Bebidas - Bar" : "Platos - Cocina", image: menuImageFor(item), tags: item?.tags || [] };
+  return {
+    ...item,
+    originalName: item.name,
+    name: hint.name,
+    category: hint.category,
+    description: hint.description,
+    image: hint.image,
+    tags: hint.tags
+  };
+}
+function menuImageFor(item) {
+  if (item?.image) return item.image;
+  const code = String(item?.code || "").toUpperCase();
+  if (menuImages[code]) return menuImages[code];
+  const text = normalizedText(`${item?.name || ""} ${item?.category || ""}`);
+  return productImageHints.find(([keys]) => keys.some((key) => text.includes(key)))?.[1] || fallbackMenuImage;
+}
 function menuAvailableFor(item, serviceCode) {
   const availability = Array.isArray(item?.availableFor) ? item.availableFor : String(item?.availableFor || "").split(/[\s,|]+/);
   return availability.map((value) => String(value).toUpperCase()).includes(String(serviceCode || "").toUpperCase());
@@ -482,39 +635,44 @@ function destinationLabel(serviceCode, booking) {
   if (serviceCode === "MIRADOR") return `Mirador · ${booking?.slot || "horario validado"}`;
   return serviceName(serviceCode);
 }
+function reservationAllowsOrders(item) {
+  return Boolean(item?.serviceCode) && !["CANCELADA", "FINALIZADA", "COMPLETADA", "NO_SHOW"].includes(item.status);
+}
+function eventAllowsOrders(item) {
+  return Boolean(item?.id) && !["CANCELADO", "FINALIZADO"].includes(item.status);
+}
 function orderDestinations(experience) {
   const bookings = experience?.bookings || [];
-  const activeEntitlements = activePassEntitlements(experience);
-  const activeBookingIds = new Set(activeEntitlements.map((item) => Number(item.bookingId)).filter(Boolean));
   const destinations = [];
   const add = (booking, serviceCode) => {
-    if (!booking || !serviceCode || ["CANCELADA", "FINALIZADA"].includes(booking.status)) return;
+    if (!reservationAllowsOrders({ ...booking, serviceCode })) return;
     const value = `booking:${booking.id}:${serviceCode}`;
     if (!destinations.some((item) => item.value === value)) destinations.push({ value, label: destinationLabel(serviceCode, booking) });
   };
-  bookings.filter((booking) => booking.paymentStatus === "PAGADO" && (booking.status === "CHECKED_IN" || activeBookingIds.has(Number(booking.id)))).forEach((booking) => add(booking, booking.serviceCode));
-  // La Llave Maestra se activa desde el check-in de hospedaje: el huésped puede
-  // elegir si su pedido debe llegar a su habitación, Piscina o Mirador.
-  activeEntitlements.filter((entry) => entry.includedByBundle && ["LISTO_INGRESO", "ACTIVO", "UTILIZADO"].includes(entry.status)).forEach((entry) => {
-    const booking = bookings.find((item) => Number(item.id) === Number(entry.bookingId));
-    if (booking?.status === "CHECKED_IN") add(booking, entry.serviceCode);
-  });
-  (experience?.events || []).filter((item) => item.status === "CONFIRMADO" && Number(item.balance || 0) <= 0 && item.accessStatus === "INGRESO_VALIDADO").forEach((item) => destinations.push({ value: `event:${item.id}:EVENTOS`, label: `Evento · ${item.name}` }));
+  bookings.filter(reservationAllowsOrders).forEach((booking) => add(booking, booking.serviceCode));
+  (experience?.events || []).filter(eventAllowsOrders).forEach((item) => destinations.push({ value: `event:${item.id}:EVENTOS`, label: `Evento · ${item.name}` }));
   return destinations;
 }
 function activePassEntitlements(experience) { return (experience?.passes || (experience?.pass ? [experience.pass] : [])).flatMap((pass) => pass.entitlements || []).filter((item) => ["ACTIVO", "UTILIZADO"].includes(item.status)); }
-function canPlaceOrders(experience) { const usedBookingIds=new Set(activePassEntitlements(experience).map((item)=>Number(item.bookingId)).filter(Boolean)); return Boolean(experience?.bookings?.some((item) => item.paymentStatus === "PAGADO" && (item.status === "CHECKED_IN" || usedBookingIds.has(Number(item.id))) && !["CANCELADA", "FINALIZADA"].includes(item.status)) || experience?.events?.some((item) => item.status === "CONFIRMADO" && Number(item.balance || 0) <= 0 && item.accessStatus === "INGRESO_VALIDADO")); }
+function canPlaceOrders(experience) { return Boolean(experience?.bookings?.some(reservationAllowsOrders) || experience?.events?.some(eventAllowsOrders)); }
 
 function Orders({ catalog, experience, onBack, onPlaced }) {
   const destinations = useMemo(() => orderDestinations(experience), [experience]);
-  const [area, setArea] = useState("TODOS"); const [cart, setCart] = useState({}); const [busy, setBusy] = useState(false); const [notes, setNotes] = useState(""); const [destination, setDestination] = useState(""); const [paymentMethod, setPaymentMethod] = useState("YAPE"); const [error, setError] = useState("");
+  const [area, setArea] = useState("TODOS"); const [category, setCategory] = useState("TODAS"); const [query, setQuery] = useState(""); const [cart, setCart] = useState({}); const [busy, setBusy] = useState(false); const [notes, setNotes] = useState(""); const [destination, setDestination] = useState(""); const [paymentMethod, setPaymentMethod] = useState("YAPE"); const [error, setError] = useState("");
   useEffect(() => { if (!destinations.some((item) => item.value === destination)) setDestination(destinations[0]?.value || ""); }, [destinations, destination]);
   const [destinationKind, destinationId, destinationService] = destination.split(":"); const activeService = destinationKind === "booking" ? destinationService : destinationKind === "event" ? "EVENTOS" : null;
-  const items = (catalog.menu || []).filter((item) => (area === "TODOS" || item.area === area) && (!activeService || menuAvailableFor(item, activeService)));
+  const baseItems = (catalog.menu || []).filter((item) => (area === "TODOS" || item.area === area) && (!activeService || menuAvailableFor(item, activeService)));
+  const categories = ["TODAS", ...Array.from(new Set(baseItems.map((item) => item.category).filter(Boolean)))];
+  useEffect(() => { if (!categories.includes(category)) setCategory("TODAS"); }, [category, categories.join("|")]);
+  const items = baseItems.filter((item) => {
+    const matchesCategory = category === "TODAS" || item.category === category;
+    const text = normalizedText(`${item.name} ${item.category} ${item.description} ${(item.tags || []).join(" ")}`);
+    return matchesCategory && (!query.trim() || text.includes(normalizedText(query)));
+  });
   const selected = (catalog.menu || []).filter((item) => cart[item.id]);
   const total = selected.reduce((sum, item) => sum + item.price * cart[item.id], 0);
-  async function place() { setBusy(true); setError(""); try { const selectedAreas = [...new Set(selected.map((item) => item.area))]; if (selectedAreas.length !== 1) throw new Error("Envía pedidos de Restaurante y Bar por separado."); await createOrder({ area: selectedAreas[0], notes, items: selected.map((item) => ({ productId: item.id, quantity: cart[item.id] })) }); onPlaced(); } catch (cause) { setError(cause.message); } finally { setBusy(false); } }
-  return <Page title="Carta Park Plaza" subtitle="Elige dónde recibirás el pedido. Cocina o bar lo reciben únicamente después de confirmar tu pago." onBack={onBack}><section className="card"><Field label="Servicio y punto de entrega" type="select" value={destination} options={destinations.length ? destinations : [{ value: "", label: "Aún no tienes un servicio habilitado" }]} onChange={(value) => { setDestination(value); setCart({}); }}/><small className="center">Solo aparecen servicios con pago e ingreso validados.</small></section>{!destinations.length ? <div className="empty-friendly"><ShoppingBag/><h2>Aún no puedes pedir</h2><p>Termina el pago y valida tu ingreso en Recepción o en el punto de acceso. Esta vista se actualizará automáticamente.</p><button className="primary" onClick={onBack}>Volver a mi experiencia</button></div> : <><div className="segments menu-segments">{[["TODOS", "Toda la carta"], ["RESTAURANTE", "Restaurante"], ["BARTENDER", "Bar"]].map(([value, label]) => <button key={value} className={area === value ? "active" : ""} onClick={() => setArea(value)}>{label}</button>)}</div><div className="visual-menu">{items.map((item) => <article className={!item.available ? "unavailable" : ""} key={item.id}><img src={item.image} alt={item.name}/><div className="menu-copy"><span>{item.category} · {item.area === "BARTENDER" ? "Bar" : "Cocina"}</span><h3>{item.name}</h3><p>{item.description}</p><div className="menu-tags">{(item.tags || []).map((tag) => <small key={tag}>{tag}</small>)}</div><p className="ingredients">{(item.ingredients || []).map((entry) => entry.name).join(" · ")}</p><b>S/ {item.price} · {item.prepMinutes} min</b></div><div className="qty"><button type="button" aria-label={`Quitar ${item.name}`} disabled={!item.available} onClick={() => setCart({ ...cart, [item.id]: Math.max(0, (cart[item.id] || 0) - 1) })}><Minus/></button><strong>{cart[item.id] || 0}</strong><button type="button" aria-label={`Agregar ${item.name}`} disabled={!item.available} onClick={() => setCart({ ...cart, [item.id]: (cart[item.id] || 0) + 1 })}><Plus/></button></div>{!item.available ? <span className="sold-out">Agotado</span> : null}</article>)}</div>{!items.length ? <div className="empty-friendly"><Utensils/><h2>No hay productos disponibles</h2><p>Administración debe habilitar platos o bebidas para este servicio.</p></div> : null}{selected.length ? <section className="cart-summary"><div className="cart-total"><span><b>{selected.reduce((sum, item) => sum + cart[item.id], 0)} productos</b><small>{selected.some((item) => item.area === "RESTAURANTE") && selected.some((item) => item.area === "BARTENDER") ? "Cocina y bar recibirán sus partes sincronizadas después del pago" : "El área responsable recibirá el pedido después del pago"}</small></span><strong>S/ {Number(total).toFixed(2)}</strong></div><Field label="Indicaciones para el equipo" value={notes} onChange={setNotes}/><h3>Pago inmediato</h3><PaymentMethods value={paymentMethod} onChange={setPaymentMethod}/>{paymentMethod === "CAJA HOTEL" ? <p className="error">Los pedidos desde la aplicación se pagan digitalmente. Para efectivo, solicita el pedido directamente en el área.</p> : null}{error ? <p className="error">{error}</p> : null}</section> : null}{total ? <button className="sticky primary" disabled={busy || !destination || paymentMethod === "CAJA HOTEL"} onClick={place}>{busy ? "Procesando pago…" : `Pagar y enviar pedido · S/ ${Number(total).toFixed(2)}`}</button> : null}</>}</Page>;
+  async function place() { setBusy(true); setError(""); try { const selectedAreas = [...new Set(selected.map((item) => item.area))]; if (selectedAreas.length !== 1) throw new Error("Envía pedidos de Restaurante y Bar por separado."); const destinationInfo = destinations.find((item) => item.value === destination); const payload = { area: selectedAreas[0], notes, destinationKind, destinationId: Number(destinationId) || null, serviceCode: activeService, destinationLabel: destinationInfo?.label || "", items: selected.map((item) => ({ productId: item.id, quantity: cart[item.id] })) }; if (destinationKind === "booking" && activeService === "HOSPEDAJE") payload.reservationId = Number(destinationId); if (destinationKind === "booking" && activeService !== "HOSPEDAJE") payload.serviceReservationId = Number(destinationId); if (destinationKind === "event") payload.eventId = Number(destinationId); await createOrder(payload); onPlaced(); } catch (cause) { setError(cause.message); } finally { setBusy(false); } }
+  return <Page title="Carta Park Plaza" subtitle="Elige dónde recibirás el pedido. Cocina o bar lo reciben únicamente después de confirmar tu pago." onBack={onBack}><section className="card"><Field label="Servicio y punto de entrega" type="select" value={destination} options={destinations.length ? destinations : [{ value: "", label: "Aún no tienes una reserva registrada" }]} onChange={(value) => { setDestination(value); setCart({}); }}/><small className="center">Aparecen las reservas registradas a tu nombre.</small></section>{!destinations.length ? <div className="empty-friendly"><ShoppingBag/><h2>Aún no puedes pedir</h2><p>Primero registra una reserva o cotización a tu nombre. Esta vista se actualizará automáticamente.</p><button className="primary" onClick={onBack}>Volver a mi experiencia</button></div> : <><div className="segments menu-segments">{[["TODOS", "Toda la carta"], ["RESTAURANTE", "Restaurante"], ["BARTENDER", "Bar"]].map(([value, label]) => <button key={value} className={area === value ? "active" : ""} onClick={() => { setArea(value); setCategory("TODAS"); }}>{label}</button>)}</div><label className="menu-search"><Search/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar plato o bebida"/></label><div className="menu-filter">{categories.map((value) => <button type="button" className={category === value ? "active" : ""} onClick={() => setCategory(value)} key={value}>{value === "TODAS" ? "Todo" : value}</button>)}</div><div className="visual-menu">{items.map((item) => <article className={!item.available ? "unavailable" : ""} key={item.id}><img src={menuImageFor(item)} alt={item.name} onError={(event) => { event.currentTarget.src = fallbackMenuImage; }}/><div className="menu-copy"><span>{item.category} · {item.area === "BARTENDER" ? "Bar" : "Cocina"}</span><h3>{item.name}</h3><p>{item.description}</p><div className="menu-tags">{(item.tags || []).map((tag) => <small key={tag}>{tag}</small>)}</div><p className="ingredients">{(item.ingredients || []).map((entry) => entry.name).join(" · ")}</p><b>S/ {item.price} · {item.prepMinutes} min</b></div><div className="qty"><button type="button" aria-label={`Quitar ${item.name}`} disabled={!item.available} onClick={() => setCart({ ...cart, [item.id]: Math.max(0, (cart[item.id] || 0) - 1) })}><Minus/></button><strong>{cart[item.id] || 0}</strong><button type="button" aria-label={`Agregar ${item.name}`} disabled={!item.available} onClick={() => setCart({ ...cart, [item.id]: (cart[item.id] || 0) + 1 })}><Plus/></button></div>{!item.available ? <span className="sold-out">Agotado</span> : null}</article>)}</div>{!items.length ? <div className="empty-friendly"><Utensils/><h2>No encontramos opciones</h2><p>Prueba otra búsqueda o cambia el filtro.</p></div> : null}{selected.length ? <section className="cart-summary"><div className="cart-total"><span><b>{selected.reduce((sum, item) => sum + cart[item.id], 0)} productos</b><small>{selected.some((item) => item.area === "RESTAURANTE") && selected.some((item) => item.area === "BARTENDER") ? "Cocina y bar recibirán sus partes sincronizadas después del pago" : "El área responsable recibirá el pedido después del pago"}</small></span><strong>S/ {Number(total).toFixed(2)}</strong></div><Field label="Indicaciones para el equipo" value={notes} onChange={setNotes}/><h3>Pago inmediato</h3><PaymentMethods value={paymentMethod} onChange={setPaymentMethod}/>{paymentMethod === "CAJA HOTEL" ? <p className="error">Los pedidos desde la aplicación se pagan digitalmente. Para efectivo, solicita el pedido directamente en el área.</p> : null}{error ? <p className="error">{error}</p> : null}</section> : null}{total ? <button className="sticky primary" disabled={busy || !destination || paymentMethod === "CAJA HOTEL"} onClick={place}>{busy ? "Procesando pago…" : `Pagar y enviar pedido · S/ ${Number(total).toFixed(2)}`}</button> : null}</>}</Page>;
 }
 
 function Requests({ onBack, onDone }) { 
@@ -578,11 +736,11 @@ async function loadCatalog() {
   const [restaurantMenu, bartenderMenu, eventSpaces, events] = await Promise.all([
     localStorage.getItem("pp_customer_token") ? getMenu("RESTAURANTE").catch(() => []) : [],
     localStorage.getItem("pp_customer_token") ? getMenu("BARTENDER").catch(() => []) : [],
-    localStorage.getItem("pp_customer_token") ? getEventSpaces().catch(() => []) : [],
+    getPublicEventSpaces().catch(() => []),
     localStorage.getItem("pp_customer_token") ? getEvents().catch(() => []) : []
   ]);
-  const localize = (item) => ({ ...item, image: menuImages[item.code] || item.image });
-  const normalizeMenu = (area, items) => (items || []).map((item) => localize({ ...item, area, availableFor: ["HOSPEDAJE"], prepMinutes: item.prepMinutes || 20 }));
+  const localize = (item) => menuPresentationFor({ ...item, image: menuImageFor(item) });
+  const normalizeMenu = (area, items) => (items || []).map((item) => localize({ ...item, area, availableFor: ["HOSPEDAJE", "PISCINA", "MIRADOR", "EVENTOS"], prepMinutes: item.prepMinutes || 20 }));
   const menu = [...normalizeMenu("RESTAURANTE", restaurantMenu), ...normalizeMenu("BARTENDER", bartenderMenu)];
   return {
     services,
@@ -597,6 +755,88 @@ async function loadCatalog() {
     eventEquipment: [],
     parking: {}
   };
+}
+
+function normalizeLodgingBooking(item) {
+  const nights = item.checkInDate && item.checkOutDate ? Math.max(0, Math.round((new Date(item.checkOutDate) - new Date(item.checkInDate)) / 86400000)) : 0;
+  return {
+    id: item.id,
+    code: item.code,
+    serviceCode: "HOSPEDAJE",
+    status: item.status,
+    paymentStatus: Number(item.balance || 0) > 0 ? "PENDIENTE" : "PAGADO",
+    date: item.checkInDate,
+    checkOutDate: item.checkOutDate,
+    slot: item.status === "CHECKED_IN" ? "Estadía activa" : "Check-in 15:00",
+    people: Number(item.adults || 0) + Number(item.children || 0),
+    adults: Number(item.adults || 0),
+    children: Number(item.children || 0),
+    nights,
+    total: Number(item.totalPrice || 0),
+    paid: Number(item.advance || 0),
+    balance: Number(item.balance || 0),
+    notes: item.notes,
+    roomId: item.roomId || item.room?.id,
+    room: item.room
+  };
+}
+
+function normalizeServiceBooking(item) {
+  return {
+    id: item.id,
+    code: item.code,
+    serviceCode: item.serviceCode || item.serviceType,
+    status: item.status,
+    paymentStatus: Number(item.balance || 0) > 0 ? "PENDIENTE" : "PAGADO",
+    date: item.date,
+    slot: typeof item.slot === "string" ? item.slot : item.slot?.startTime,
+    people: item.people,
+    adults: Number(item.adults || 0),
+    children: Number(item.children || 0),
+    plan: item.plan,
+    planName: item.plan?.name || item.planName,
+    extras: item.extras || [],
+    notes: item.notes,
+    total: Number(item.total || item.totalAmount || 0),
+    paid: Number(item.paid || item.advance || 0),
+    balance: Number(item.balance || 0),
+    accessStatus: item.checkedInAt ? "INGRESO_VALIDADO" : "PENDIENTE"
+  };
+}
+
+function normalizeRecoveredExperience(recovered) {
+  return {
+    client: recovered.client,
+    bookings: [
+      ...(recovered.reservations || []).map(normalizeLodgingBooking),
+      ...(recovered.serviceReservations || []).map(normalizeServiceBooking)
+    ],
+    events: recovered.events || [],
+    orders: [],
+    consumptions: [],
+    requests: [],
+    passes: []
+  };
+}
+
+async function buildPublicExperience(documentNumber) {
+  const recovered = await recoverReservations(documentNumber);
+  return normalizeRecoveredExperience(recovered);
+}
+
+async function buildCustomerExperience(storedClient) {
+  const [publicExperience, serviceReservations, orders] = await Promise.all([
+    buildPublicExperience(storedClient.documentNumber),
+    getCustomerServiceReservations().catch(() => []),
+    getOrders().catch(() => [])
+  ]);
+  const serviceBookings = serviceReservations.map(normalizeServiceBooking);
+  const serviceIds = new Set(serviceBookings.map((item) => `service-${item.id}`));
+  const bookings = [
+    ...publicExperience.bookings.filter((item) => item.serviceCode === "HOSPEDAJE" || !serviceIds.has(`service-${item.id}`)),
+    ...serviceBookings
+  ];
+  return { ...publicExperience, bookings, orders };
 }
 
 async function buildGuestExperience() {

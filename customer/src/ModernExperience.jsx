@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BedDouble, CalendarDays, ChevronRight, ClipboardList, CreditCard, LogOut, MapPin, QrCode, ShieldCheck, Sparkles, SunMedium, Waves } from "lucide-react";
+import { ArrowLeft, BedDouble, CalendarDays, ChevronRight, ClipboardList, CreditCard, LogOut, MapPin, QrCode, ShieldCheck, Sparkles, SunMedium, Waves } from "lucide-react";
 
 const images = { HOSPEDAJE: "/images/experiences/hospedaje.webp", PISCINA: "/images/experiences/piscina.webp", MIRADOR: "/images/experiences/mirador.webp", EVENTOS: "/images/experiences/eventos.webp" };
 const icons = { HOSPEDAJE: BedDouble, PISCINA: Waves, MIRADOR: SunMedium, EVENTOS: Sparkles };
@@ -12,8 +12,15 @@ const welcomeExperiences = [
 
 export function ModernWelcome({ onCredential, onRecover }) {
   const [active, setActive] = useState(0);
+  const [registering, setRegistering] = useState(false);
+  const [form, setForm] = useState({ documentType: "DNI", documentNumber: "", firstName: "", lastName: "", phone: "", email: "" });
   const current = welcomeExperiences[active];
   const advance = () => setActive((value) => (value + 1) % welcomeExperiences.length);
+  const update = (field, value) => setForm((currentForm) => ({ ...currentForm, [field]: value }));
+  const submit = (event) => {
+    event.preventDefault();
+    onCredential(form);
+  };
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
@@ -32,7 +39,18 @@ export function ModernWelcome({ onCredential, onRecover }) {
       <p>{current.eyebrow}</p><h1>{current.title}</h1><h2>{current.headline}</h2><span>{current.body}</span>
       <div className="ppx-trust"><span><ShieldCheck/>Pago protegido</span><span><QrCode/>Un solo QR</span><span><CalendarDays/>Disponibilidad real</span></div>
     </section>
-    <section className="ppx-entry-panel" id="welcome-actions"><div className="ppx-entry-heading"><div><small>EXPERIENCIA PARK PLAZA</small><p>¿Cómo deseas comenzar?</p></div><span className="ppx-auto-label">Cambio automático · 3 s</span></div><Entry icon={CreditCard} title="Iniciar una experiencia" text="Explora servicios, fechas y disponibilidad" onClick={onCredential} primary/><Entry icon={ClipboardList} title="Recuperar mi reserva" text="Ingresa tu DNI y revisa tus accesos" onClick={onRecover}/></section>
+    <section className="ppx-entry-panel" id="welcome-actions">
+      <div className="ppx-entry-heading"><div><small>EXPERIENCIA PARK PLAZA</small><p>{registering ? "Datos del titular" : "¿Cómo deseas comenzar?"}</p></div><span className="ppx-auto-label">Cambio automático · 3 s</span></div>
+      {registering ? <form className="ppx-register-form" onSubmit={submit}>
+        <div className="ppx-doc-toggle"><button type="button" className={form.documentType === "DNI" ? "active" : ""} onClick={() => update("documentType", "DNI")}>DNI</button><button type="button" className={form.documentType !== "DNI" ? "active" : ""} onClick={() => update("documentType", "CE")}>CE</button></div>
+        <label><span>Documento</span><input required value={form.documentNumber} onChange={(event) => update("documentNumber", event.target.value)} /></label>
+        <div className="ppx-register-two"><label><span>Nombres</span><input required value={form.firstName} onChange={(event) => update("firstName", event.target.value)} /></label><label><span>Apellidos</span><input required value={form.lastName} onChange={(event) => update("lastName", event.target.value)} /></label></div>
+        <label><span>Celular</span><input required value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label>
+        <label><span>Correo</span><input required type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label>
+        <button className="ppx-register-submit" type="submit">Guardar y elegir experiencia <ChevronRight/></button>
+        <button className="ppx-register-back" type="button" onClick={() => setRegistering(false)}><ArrowLeft/> Volver</button>
+      </form> : <><Entry icon={CreditCard} title="Iniciar una experiencia" text="Registra tus datos y explora disponibilidad" onClick={() => setRegistering(true)} primary/><Entry icon={ClipboardList} title="Recuperar mi reserva" text="Ingresa tu DNI y revisa tus accesos" onClick={onRecover}/></>}
+    </section>
   </main>;
 }
 
