@@ -1,9 +1,19 @@
 import { io } from "socket.io-client";
 import { apiOrigin } from "../config/api";
 
-// Configuración centralizada de Socket.IO
-// El backend dictará los rooms (client_ID o stay_ID).
-export const realtime = io(apiOrigin, { 
-  transports: ["websocket", "polling"], 
-  reconnection: true 
+export const realtime = io(apiOrigin, {
+  autoConnect: false,
+  transports: ["websocket", "polling"],
+  reconnection: true,
+  auth: (cb) => cb({ token: localStorage.getItem("pp_customer_token") || "" })
 });
+
+export function connectCustomerRealtime() {
+  const token = localStorage.getItem("pp_customer_token");
+  if (!token) {
+    if (realtime.connected) realtime.disconnect();
+    return;
+  }
+  realtime.auth = { token };
+  if (!realtime.connected) realtime.connect();
+}

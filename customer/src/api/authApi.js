@@ -8,3 +8,7 @@ export async function loginGuest(credentials) {
     body: credentials
   });
 }
+
+export async function getGuestProfile() {
+  return request("/client/profile", {}, true);
+}
