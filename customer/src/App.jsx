@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Banknote, BedDouble, CalendarDays, Car, Check, ChevronRight, ClipboardList, Clock3, ConciergeBell, CreditCard, Download, HelpCircle, Home, Minus, Plus, QrCode, ShoppingBag, Smartphone, Sparkles, SunMedium, Users, Waves, Map, BookOpen, Wifi, Coffee, FileText, CheckCircle2, Utensils, ChefHat, Bike } from "lucide-react";
-import { io } from "socket.io-client";
 import { ExperienceFlow } from "./ExperienceFlows";
 import { ModernHome, ModernWelcome } from "./ModernExperience";
-import { apiBaseUrl, apiOrigin } from "./config/api";
-
-const realtime = io(apiOrigin, { transports: ["websocket", "polling"], reconnection: true });
+import { apiBaseUrl } from "./config/api";
+import { request } from "./api/apiClient";
+import { realtime } from "./api/realtime";
 const serviceImages = {
   HOSPEDAJE: "/images/experiences/hospedaje.webp",
   PISCINA: "/images/experiences/piscina.webp",
@@ -474,4 +473,3 @@ async function loadCatalog() {
   const localize = (item) => ({ ...item, image: menuImages[item.code] || item.image });
   return { ...catalog, menu: (catalog.menu || []).map(localize), restaurantMenu: (catalog.restaurantMenu || []).map(localize) };
 }
-async function request(path, options = {}, authenticated = false) { const headers = { "Content-Type": "application/json" }; if (authenticated) headers.Authorization = `Bearer ${localStorage.getItem("pp_customer_token")}`; let response; try { response = await fetch(`${apiBaseUrl}${path}`, { ...options, cache: "no-store", headers, body: options.body ? JSON.stringify(options.body) : undefined }); } catch { const error = new Error("No pudimos conectar con el hotel. Revisa tu conexión e intenta nuevamente."); error.status = 0; throw error; } const data = await response.json().catch(() => null); if (!response.ok) { const error = new Error(data?.message || "No pudimos completar la operación"); error.status = response.status; throw error; } return data; }
