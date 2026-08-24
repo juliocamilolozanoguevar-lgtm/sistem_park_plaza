@@ -1,20 +1,13 @@
+﻿// eventsApi.js
 import { request } from './apiClient';
 
-export async function getEventSpaces() {
-  return request("/client/events/spaces", {}, true);
-}
-
 export async function getEvents() {
-  return request("/client/events", {}, true);
+  return request("/api/customer/events", {}, true);
 }
 
-export async function getEvent(id) {
-  return request(`/client/events/${id}`, {}, true);
-}
-
-export async function createEvent(payload) {
-  return request("/client/events", {
+export async function acceptEventQuotation(eventId, paymentData) {
+  return request(`/api/customer/events/${eventId}/accept`, {
     method: "POST",
-    body: payload
+    body: paymentData
   }, true);
 }
