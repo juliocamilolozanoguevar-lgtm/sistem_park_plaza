@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, BedDouble, CalendarDays, Car, Check, ChevronRight, Clock3, Minus, Plus, Sparkles, SunMedium, UserPlus, Users, Waves, X } from "lucide-react";
 import { apiBaseUrl } from "./config/api";
-import { getAvailableRooms } from "./api/publicApi";
+import { getAvailableRooms, getRoomTypes } from "./api/publicApi";
 
 const roomImages = {
   Simple: "/images/rooms/simple.webp",
@@ -36,12 +36,27 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
   const [roomType, setRoomType] = useState("TODAS");
   const [masterBundle, setMasterBundle] = useState(false);
 
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState("");
+  const [allRoomTypes, setAllRoomTypes] = useState([]);
+
+  useEffect(() => {
+    getRoomTypes().then(setAllRoomTypes).catch(() => {});
+  }, []);
+
   useEffect(() => { 
+    setRoomsLoading(true);
+    setRoomsError("");
     getAvailableRooms({ checkIn, checkOut, guests: adults + children, typeId: roomType === "TODAS" ? undefined : roomType })
       .then(data => {
         setRooms(data.rooms || []);
+        setRoomsLoading(false);
       })
-      .catch(() => setRooms([]));
+      .catch((error) => {
+        setRoomsError(error.message || "No pudimos consultar disponibilidad.");
+        setRooms([]);
+        setRoomsLoading(false);
+      });
   }, [checkIn, checkOut, adults, children, roomType]);
 
 
@@ -56,8 +71,7 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
   const bundleDiscount = masterBundle ? Math.round((poolBundlePrice + lookoutBundlePrice) * 0.1 * 100) / 100 : 0;
   const bundleTotal = masterBundle ? poolBundlePrice + lookoutBundlePrice - bundleDiscount : 0;
   const total = base + extrasTotal + parkingTotal + bundleTotal;
-  const roomTypes = ["TODAS", ...new Set(rooms.map((item) => item.type.name))];
-  const visibleRooms = roomType === "TODAS" ? rooms : rooms.filter((item) => item.type.name === roomType);
+  const visibleRooms = rooms; // Backend ya filtró por typeId
 
   function next() { 
     onCheckout({ service, planCode: plan.code, planName: plan.name, room: viewingRoom, date: checkIn, checkIn, checkOut, slot: "15:00", people, adults, children, guests: normalizedGuests(guests, adults, children), nights, extras, parking: vehicles[0] || null, vehicles, preferences: {}, preorderItems: [], base, extrasTotal, parkingTotal, bundleCode: masterBundle ? "HOSPEDAJE_PISCINA_MIRADOR" : null, bundleServices: masterBundle ? [{ serviceCode: "PISCINA", date: checkIn, slot: "09:00", people }, { serviceCode: "MIRADOR", date: checkIn, slot: "16:30", people }] : [], bundleTotal, bundleDiscount, total }); 
@@ -70,22 +84,29 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
       
       <section className="flow-card">
         <div className="flow-heading"><div><h2>Escoge tu habitación</h2><p>Filtra por tipo y abre cada opción para ver todos sus detalles.</p></div></div>
-        <div className="room-filter" aria-label="Filtrar habitaciones por tipo">{roomTypes.map((type) => <button type="button" className={roomType === type ? "selected" : ""} onClick={() => setRoomType(type)} key={type}>{type === "TODAS" ? "Todas" : type}</button>)}</div>
-        <div className="room-catalog">
-          {visibleRooms.map((item) => (
-            <button type="button" className="room-choice" onClick={() => setViewingRoom(item)} key={item.id}>
-              <img src={roomImages[item.type.name] || roomImages.Simple} alt={item.type.name}/>
-              <div>
-                <small>HABITACIÓN {item.number}</small>
-                <h3>{item.type.name}</h3>
-                <p>{item.description || item.type?.description || "Habitación con todas las comodidades"}</p>
-                <span>Hasta {item.capacity} personas · Piso {item.floor}</span>
-                <strong>S/ {item.price} por noche</strong>
-              </div>
-            </button>
-          ))}
+        <div className="room-filter" aria-label="Filtrar habitaciones por tipo">
+          <button type="button" className={roomType === "TODAS" ? "selected" : ""} onClick={() => setRoomType("TODAS")}>Todas</button>
+          {allRoomTypes.map((type) => <button type="button" className={roomType === type.id ? "selected" : ""} onClick={() => setRoomType(type.id)} key={type.id}>{type.name}</button>)}
         </div>
-        {!visibleRooms.length && <p className="availability-note" style={{marginTop: '1rem'}}>No hay habitaciones de este tipo disponibles para estas fechas.</p>}
+        {roomsLoading && <p className="availability-note" style={{marginTop: '1rem'}}>Buscando habitaciones disponibles...</p>}
+        {roomsError && <p className="availability-note" style={{marginTop: '1rem', color: 'var(--primary)'}}>{roomsError}</p>}
+        {!roomsLoading && !roomsError && (
+          <div className="room-catalog">
+            {visibleRooms.map((item) => (
+              <button type="button" className="room-choice" onClick={() => setViewingRoom(item)} key={item.id}>
+                <img src={roomImages[item.type.name] || roomImages.Simple} alt={item.type.name}/>
+                <div>
+                  <small>HABITACIÓN {item.number}</small>
+                  <h3>{item.type.name}</h3>
+                  <p>{item.description || item.type?.description || "Habitación con todas las comodidades"}</p>
+                  <span>Hasta {item.capacity} personas · Piso {item.floor}</span>
+                  <strong>S/ {item.price} por noche</strong>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        {!roomsLoading && !roomsError && !visibleRooms.length && <p className="availability-note" style={{marginTop: '1rem'}}>No hay habitaciones disponibles para estas fechas.</p>}
       </section>
 
       {viewingRoom && (

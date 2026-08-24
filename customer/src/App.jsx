@@ -142,11 +142,13 @@ function Checkout({ selection, onBack, onPaid }) {
   const [error, setError] = useState("");
   const cash = method === "CAJA HOTEL";
   const due = cash ? 0 : mode === "HALF" ? selection.total / 2 : selection.total;
+  const isLodging = selection?.service?.code === "HOSPEDAJE";
+
   async function pay() { 
     setBusy(true); setError(""); 
     try { 
       let result;
-      if (selection.service.code === "HOSPEDAJE") {
+      if (isLodging) {
         const clientStr = localStorage.getItem("pp_customer_client");
         const client = clientStr ? JSON.parse(clientStr) : {};
         const payload = {
@@ -164,12 +166,18 @@ function Checkout({ selection, onBack, onPaid }) {
           address: client.address || "",
           notes: selection.notes || ""
         };
+        
+        if (!payload.documentNumber || !payload.firstName || !payload.lastName) {
+            setError("Faltan datos de contacto del cliente. Por favor, regresa al paso anterior para identificarte.");
+            setBusy(false);
+            return;
+        }
+
         const backendRes = await createReservation(payload);
         result = { 
           booking: { 
-            code: backendRes.code, 
-            paid: backendRes.advance, 
-            balance: backendRes.balance 
+            ...backendRes,
+            paid: backendRes.advance 
           } 
         };
       } else {
@@ -177,12 +185,31 @@ function Checkout({ selection, onBack, onPaid }) {
       }
       await onPaid(result); 
     } catch (cause) { 
-      setError(cause.message || "No se pudo registrar el pago"); 
+      setError(cause.message || "No se pudo registrar la operación"); 
     } finally { 
       setBusy(false); 
     } 
   }
-  return <Page title="Confirma tu experiencia" subtitle="Revisa cada concepto y decide cuánto deseas pagar ahora." onBack={onBack}><JourneySteps current={3}/><section className="checkout-grid"><div><div className="card"><h2>1. ¿Cómo deseas reservar?</h2><button type="button" className={`pay-choice ${mode === "FULL" ? "selected" : ""}`} onClick={() => setMode("FULL")}><b>Pagar el total · S/ {Number(selection.total).toFixed(2)}</b><small>La reserva queda pagada. El QR estará listo, pero se activará cuando el personal valide tu ingreso.</small></button><button type="button" className={`pay-choice ${mode === "HALF" ? "selected" : ""}`} onClick={() => setMode("HALF")}><b>Reservar con 50% · S/ {(selection.total / 2).toFixed(2)}</b><small>Separa fecha, habitación o cupo. Podrás completar el saldo desde tu QR o tus reservas.</small></button></div><div className="card"><h2>2. Método de pago</h2><PaymentMethods value={method} onChange={setMethod}/>{cash ? <Info icon={Banknote} title="Pago pendiente en Recepción" text="No se marcará como pagado hasta que Caja reciba y valide el efectivo. Podrás cambiar luego a un método digital."/> : null}</div></div><InvoiceSummary selection={selection} cash={cash} mode={mode}/></section>{error ? <p className="error">{error}</p> : null}<div className="checkout-action"><button className="primary wide" disabled={busy} onClick={pay}>{busy ? "Procesando…" : cash ? "Confirmar reserva pendiente de caja" : `Pagar S/ ${Number(due).toFixed(2)}`}</button></div><small className="center">Operación demostrativa: los estados, saldos, cupos y caja sí se registran en el ERP.</small></Page>;
+
+  return <Page title={isLodging ? "Confirma tu reserva" : "Confirma tu experiencia"} subtitle={isLodging ? "Revisa tu reserva antes de confirmar." : "Revisa cada concepto y decide cuánto deseas pagar ahora."} onBack={onBack}>
+    <JourneySteps current={3}/>
+    <section className="checkout-grid">
+      {!isLodging && (
+        <div>
+          <div className="card"><h2>1. ¿Cómo deseas reservar?</h2><button type="button" className={`pay-choice ${mode === "FULL" ? "selected" : ""}`} onClick={() => setMode("FULL")}><b>Pagar el total · S/ {Number(selection.total).toFixed(2)}</b><small>La reserva queda pagada. El QR estará listo, pero se activará cuando el personal valide tu ingreso.</small></button><button type="button" className={`pay-choice ${mode === "HALF" ? "selected" : ""}`} onClick={() => setMode("HALF")}><b>Reservar con 50% · S/ {(selection.total / 2).toFixed(2)}</b><small>Separa fecha, habitación o cupo. Podrás completar el saldo desde tu QR o tus reservas.</small></button></div>
+          <div className="card"><h2>2. Método de pago</h2><PaymentMethods value={method} onChange={setMethod}/>{cash ? <Info icon={Banknote} title="Pago pendiente en Recepción" text="No se marcará como pagado hasta que Caja reciba y valide el efectivo. Podrás cambiar luego a un método digital."/> : null}</div>
+        </div>
+      )}
+      <InvoiceSummary selection={selection} cash={isLodging ? true : cash} mode={isLodging ? "FULL" : mode}/>
+    </section>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="checkout-action">
+      <button className="primary wide" disabled={busy} onClick={pay}>
+        {busy ? "Procesando…" : isLodging ? "Confirmar reserva" : cash ? "Confirmar reserva pendiente de caja" : `Pagar S/ ${Number(due).toFixed(2)}`}
+      </button>
+    </div>
+    {!isLodging && <small className="center">Operación demostrativa: los estados, saldos, cupos y caja sí se registran en el ERP.</small>}
+  </Page>;
 }
 
 function EventConfirmation({ draft, onBack, onPaid }) {
@@ -232,8 +259,32 @@ function StatusLegend() { return <div className="status-legend"><b>¿Qué signif
 function formatDate(value) { if (!value) return "Fecha por confirmar"; return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }); }
 
 function PaymentSuccess({ result, selection, onExperience, onAdd }) {
-  const pending = result?.booking?.balance > 0;
-  return <Page title={pending ? "¡Reserva asegurada!" : "¡Pago confirmado!"} subtitle="Tu operación se registró correctamente."><section className="success-card"><span className="success-icon"><Check/></span><small>{result?.booking?.code || "RESERVA PARK PLAZA"}</small><h2>{selection?.service?.name}</h2><p>{pending ? `Pagaste S/ ${result.booking.paid}. Mantienes un saldo de S/ ${result.booking.balance}.` : "Tu servicio está pagado y fue agregado a tu pase único."}</p><div className={`access-state ${pending ? "pending" : "ready"}`}><QrCode/><div><b>{pending ? "QR pendiente de pago" : "QR listo para ingreso"}</b><small>{pending ? "La fecha, horario y cupos están reservados. Completa el saldo antes de ingresar." : "Recepción o el control del servicio validará tu entrada antes de habilitar los consumos."}</small></div></div><button className="primary wide" onClick={onExperience}>{pending ? "Ver reserva y completar después" : "Ver mi pase y próximo paso"}</button><button className="link-button" onClick={onAdd}>Agregar otra experiencia</button></section></Page>;
+  const isLodging = selection?.service?.code === "HOSPEDAJE";
+  const status = result?.booking?.status;
+  const isPending = isLodging ? status === "PENDIENTE" : result?.booking?.balance > 0;
+  
+  let title = "¡Pago confirmado!";
+  let subtitle = "Tu operación se registró correctamente.";
+  let message = "Tu servicio está pagado y fue agregado a tu pase único.";
+  let qrTitle = "QR listo para ingreso";
+  let qrDesc = "Recepción o el control del servicio validará tu entrada antes de habilitar los consumos.";
+
+  if (isLodging) {
+    title = isPending ? "Reserva registrada correctamente" : "¡Reserva asegurada!";
+    subtitle = isPending ? "Tu reserva quedó pendiente de confirmación/pago." : "Tu operación se registró correctamente.";
+    message = isPending 
+      ? `El total de tu reserva es S/ ${result?.booking?.totalPrice}. Por favor completa el pago en recepción.` 
+      : `Reserva pagada (S/ ${result?.booking?.paid}).`;
+    qrTitle = isPending ? "Pago pendiente en Recepción" : "Reserva lista";
+    qrDesc = isPending ? "Acércate a recepción para validar tu reserva." : "Presenta tu código en recepción.";
+  } else if (isPending) {
+    title = "¡Reserva asegurada!";
+    message = `Pagaste S/ ${result.booking.paid}. Mantienes un saldo de S/ ${result.booking.balance}.`;
+    qrTitle = "QR pendiente de pago";
+    qrDesc = "La fecha, horario y cupos están reservados. Completa el saldo antes de ingresar.";
+  }
+
+  return <Page title={title} subtitle={subtitle}><section className="success-card"><span className="success-icon"><Check/></span><small>{result?.booking?.code || "RESERVA PARK PLAZA"}</small><h2>{selection?.service?.name}</h2><p>{message}</p><div className={`access-state ${isPending ? "pending" : "ready"}`}><QrCode/><div><b>{qrTitle}</b><small>{qrDesc}</small></div></div><button className="primary wide" onClick={onExperience}>{isPending ? "Ver reserva y completar después" : "Ver mi pase y próximo paso"}</button><button className="link-button" onClick={onAdd}>Agregar otra experiencia</button></section></Page>;
 }
 
 function Experience({ experience, onBack, onPay, onOrders, onRequest, onAdd }) {
