@@ -23,8 +23,6 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
   const initialDate = today(); 
   const [checkIn, setCheckIn] = useState(initialDate); 
   const [checkOut, setCheckOut] = useState(addDays(initialDate, 1)); 
-  const [calendarFrom, setCalendarFrom] = useState(initialDate);
-  const [availability, setAvailability] = useState([]); 
   const [rooms, setRooms] = useState([]); 
   const [adults, setAdults] = useState(2); 
   const [children, setChildren] = useState(0); 
@@ -80,7 +78,7 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
   return (
     <FlowPage icon={BedDouble} eyebrow="RESERVA DE HOSPEDAJE" title="Elige cómo quieres descansar" subtitle="Selecciona tus fechas y descubre nuestras habitaciones disponibles." onBack={onBack}>
       <Progress current={1}/>
-      <DateAvailability days={availability} selected={checkIn} onSelect={(date) => { setCheckIn(date); if (checkOut <= date) setCheckOut(addDays(date, 1)); }} onWindowChange={setCalendarFrom}/>
+      <DateAvailability selected={checkIn} onSelect={(date) => { setCheckIn(date); if (checkOut <= date) setCheckOut(addDays(date, 1)); }} />
       
       <section className="flow-card">
         <div className="flow-heading"><div><h2>Escoge tu habitación</h2><p>Filtra por tipo y abre cada opción para ver todos sus detalles.</p></div></div>
@@ -234,27 +232,34 @@ function PeoplePresets({ people, onSelect }) {
   return <div className="party-selector"><div className="party-selector-head"><div><b>¿Quiénes vienen?</b><span>El QR controla la cantidad exacta reservada.</span></div><strong><Users/> {people} {people === 1 ? "persona" : "personas"}</strong></div><div className="party-presets">{options.map((option) => <button type="button" className={people === option.value ? "selected" : ""} onClick={() => onSelect(option.value)} key={option.label}><b>{option.label}</b><small>{option.value} {option.value === 1 ? "persona" : "personas"}</small></button>)}</div></div>;
 }
 
-function DateAvailability({ days, selected, onSelect }) { 
+function DateAvailability({ selected, onSelect }) { 
   const pickerRef = useRef(null);
   const stripRef = useRef(null);
   const goBack = () => { const previous = addDays(selected, -1); if (previous >= today()) onSelect(previous); };
   const goForward = () => onSelect(addDays(selected, 1));
   useEffect(() => { stripRef.current?.querySelector(`[data-date="${selected}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" }); }, [selected]);
+  
+  const baseDate = selected < today() ? today() : addDays(selected, -2);
+  const safeBase = baseDate < today() ? today() : baseDate;
+  const localDays = Array.from({ length: 14 }).map((_, i) => ({
+    date: addDays(safeBase, i)
+  }));
+
   return (
     <section className="flow-card">
       <div className="flow-heading">
         <div>
-          <h2>Calendario disponible</h2>
-          <p>Los cupos se actualizan con las reservas del sistema.</p>
+          <h2>Elige tus fechas</h2>
+          <p>Selecciona tu fecha de llegada.</p>
         </div>
         <div className="calendar-actions"><button type="button" onClick={goBack} disabled={selected <= today()} aria-label="Ver día anterior">‹</button><button type="button" onClick={goForward} aria-label="Ver día siguiente">›</button><button type="button" onClick={() => pickerRef.current?.showPicker?.()} aria-label="Elegir fecha en calendario"><CalendarDays/></button><input ref={pickerRef} type="date" value={selected} min={today()} onChange={e => e.target.value && onSelect(e.target.value)}/></div>
       </div>
       <div className="date-strip" ref={stripRef} aria-label="Fechas disponibles. Desliza hacia los lados para ver más días.">
-        {days.slice(0, 14).map((day) => (
-          <button data-date={day.date} disabled={!day.available} className={selected === day.date ? "selected" : ""} onClick={() => onSelect(day.date)} key={day.date}>
+        {localDays.map((day) => (
+          <button type="button" data-date={day.date} className={selected === day.date ? "selected" : ""} onClick={() => onSelect(day.date)} key={day.date}>
             <small>{new Date(`${day.date}T12:00:00`).toLocaleDateString("es-PE", { weekday: "short" })}</small>
             <b>{day.date.slice(-2)}</b>
-            <span>{day.available ? `${day.remaining} libres` : "Completo"}</span>
+            <span>Seleccionar</span>
           </button>
         ))}
       </div>
