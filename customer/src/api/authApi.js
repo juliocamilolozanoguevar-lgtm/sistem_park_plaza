@@ -1,11 +1,13 @@
-// authApi.js - LEGACY_TEMPORAL stub
-// Funciones preparadas para la nueva autenticación
 import { request } from './apiClient';
 
-export async function loginExternalCustomer(credentials) {
-  // POST /api/customer/session
-}
+// TODO: Endpoint de autenticación externa por confirmar.
+// export async function loginExternalCustomer(credentials) {
+//   // return request("/customer/session", { method: "POST", body: credentials });
+// }
 
 export async function loginGuest(credentials) {
-  // POST /api/client/session
+  return request("/client/session", {
+    method: "POST",
+    body: credentials
+  });
 }

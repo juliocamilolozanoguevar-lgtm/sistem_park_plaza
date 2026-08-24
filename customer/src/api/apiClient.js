@@ -5,17 +5,23 @@ import { apiBaseUrl } from '../config/api';
  * Preparado para soportar bearer token, JSON y manejo de errores estandarizado.
  */
 export async function request(path, options = {}, authenticated = false) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (authenticated) {
     headers.Authorization = `Bearer ${localStorage.getItem("pp_customer_token")}`;
   }
+  
+  let body = options.body;
+  if (body && typeof body !== "string") {
+    body = JSON.stringify(body);
+  }
+
   let response;
   try {
     response = await fetch(`${apiBaseUrl}${path}`, { 
       ...options, 
       cache: "no-store", 
       headers, 
-      body: options.body ? JSON.stringify(options.body) : undefined 
+      body
     });
   } catch {
     const error = new Error("No pudimos conectar con el hotel. Revisa tu conexión e intenta nuevamente.");
