@@ -12,6 +12,8 @@ export async function getAvailableRooms(filters = {}) {
   const query = new URLSearchParams();
   if (filters.checkIn) query.append("checkIn", filters.checkIn);
   if (filters.checkOut) query.append("checkOut", filters.checkOut);
+  if (filters.guests) query.append("guests", filters.guests);
+  if (filters.typeId) query.append("typeId", filters.typeId);
   
   const qs = query.toString();
   return request(`/public/rooms/available${qs ? '?' + qs : ''}`);
@@ -24,8 +26,11 @@ export async function createReservation(payload) {
   });
 }
 
-export async function getReservation(code) {
-  return request(`/public/reservations/${code}`);
+export async function getReservation(code, documentNumber) {
+  const query = new URLSearchParams();
+  if (documentNumber) query.append("documentNumber", documentNumber);
+  const qs = query.toString();
+  return request(`/public/reservations/${code}${qs ? '?' + qs : ''}`);
 }
 
 export async function getServices() {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, BedDouble, CalendarDays, Car, Check, ChevronRight, Clock3, Minus, Plus, Sparkles, SunMedium, UserPlus, Users, Waves, X } from "lucide-react";
 import { apiBaseUrl } from "./config/api";
+import { getAvailableRooms } from "./api/publicApi";
 
 const roomImages = {
   Simple: "/images/rooms/simple.webp",
@@ -35,8 +36,14 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
   const [roomType, setRoomType] = useState("TODAS");
   const [masterBundle, setMasterBundle] = useState(false);
 
-  useEffect(() => { api(`/public/availability/HOSPEDAJE?from=${calendarFrom}`).then(setAvailability); }, [calendarFrom]);
-  useEffect(() => { api(`/public/rooms?checkIn=${checkIn}&checkOut=${checkOut}`).then(setRooms); }, [checkIn, checkOut]);
+  useEffect(() => { 
+    getAvailableRooms({ checkIn, checkOut, guests: adults + children, typeId: roomType === "TODAS" ? undefined : roomType })
+      .then(data => {
+        setRooms(data.rooms || []);
+      })
+      .catch(() => setRooms([]));
+  }, [checkIn, checkOut, adults, children, roomType]);
+
 
   const nights = Math.max(1, daysBetween(checkIn, checkOut)); 
   const people = adults + children; 
@@ -71,7 +78,7 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
               <div>
                 <small>HABITACIÓN {item.number}</small>
                 <h3>{item.type.name}</h3>
-                <p>{item.features.join(" · ")}</p>
+                <p>{item.description || item.type?.description || "Habitación con todas las comodidades"}</p>
                 <span>Hasta {item.capacity} personas · Piso {item.floor}</span>
                 <strong>S/ {item.price} por noche</strong>
               </div>
@@ -92,7 +99,7 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
               <div className="room-modal-content">
                 <small style={{ color: 'var(--primary)', fontWeight: 'bold' }}>HABITACIÓN {viewingRoom.number} · PISO {viewingRoom.floor}</small>
                 <h2 style={{ margin: '0.5rem 0' }}>{viewingRoom.type.name}</h2>
-                <p style={{ color: 'var(--text-light)', marginBottom: '1.5rem' }}>Disfruta de nuestra habitación {viewingRoom.type.name.toLowerCase()}, equipada con {viewingRoom.features.join(", ")}. Perfecta para hasta {viewingRoom.capacity} personas.</p>
+                <p style={{ color: 'var(--text-light)', marginBottom: '1.5rem' }}>Disfruta de nuestra habitación {viewingRoom.type?.name?.toLowerCase() || viewingRoom.type?.toLowerCase()}, {viewingRoom.description || viewingRoom.type?.description || "ideal para tu descanso"}. Perfecta para hasta {viewingRoom.capacity} personas.</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                   <section>

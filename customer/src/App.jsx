@@ -5,6 +5,7 @@ import { ModernHome, ModernWelcome } from "./ModernExperience";
 import { apiBaseUrl } from "./config/api";
 import { request } from "./api/apiClient";
 import { realtime } from "./api/realtime";
+import { createReservation } from "./api/publicApi";
 const serviceImages = {
   HOSPEDAJE: "/images/experiences/hospedaje.webp",
   PISCINA: "/images/experiences/piscina.webp",
@@ -141,7 +142,46 @@ function Checkout({ selection, onBack, onPaid }) {
   const [error, setError] = useState("");
   const cash = method === "CAJA HOTEL";
   const due = cash ? 0 : mode === "HALF" ? selection.total / 2 : selection.total;
-  async function pay() { setBusy(true); setError(""); try { const result = await request("/public/bookings", { method: "POST", body: { serviceCode: selection.service.code, planCode: selection.planCode, planName: selection.planName, roomId: selection.room?.id, checkIn: selection.checkIn || selection.date, checkOut: selection.checkOut, date: selection.date, slot: selection.slot, people: selection.people, adults: selection.adults, children: selection.children, guests: selection.guests, extras: selection.extras, extrasTotal: selection.extrasTotal, preorderItems: selection.preorderItems, preferences: selection.preferences, parking: selection.parking, vehicles: selection.vehicles, parkingTotal: selection.parkingTotal, bundleCode: selection.bundleCode, bundleServices: selection.bundleServices, total: selection.total, payMode: mode, paymentMethod: method } }, true); await onPaid(result); } catch (cause) { setError(cause.message || "No se pudo registrar el pago"); } finally { setBusy(false); } }
+  async function pay() { 
+    setBusy(true); setError(""); 
+    try { 
+      let result;
+      if (selection.service.code === "HOSPEDAJE") {
+        const clientStr = localStorage.getItem("pp_customer_client");
+        const client = clientStr ? JSON.parse(clientStr) : {};
+        const payload = {
+          roomId: selection.room?.id,
+          checkInDate: selection.checkIn || selection.date,
+          checkOutDate: selection.checkOut,
+          adults: selection.adults,
+          children: selection.children,
+          documentType: client.documentType || "DNI",
+          documentNumber: client.documentNumber,
+          firstName: client.firstName,
+          lastName: client.lastName,
+          phone: client.phone,
+          email: client.email,
+          address: client.address || "",
+          notes: selection.notes || ""
+        };
+        const backendRes = await createReservation(payload);
+        result = { 
+          booking: { 
+            code: backendRes.code, 
+            paid: backendRes.advance, 
+            balance: backendRes.balance 
+          } 
+        };
+      } else {
+        result = await request("/public/bookings", { method: "POST", body: { serviceCode: selection.service.code, planCode: selection.planCode, planName: selection.planName, roomId: selection.room?.id, checkIn: selection.checkIn || selection.date, checkOut: selection.checkOut, date: selection.date, slot: selection.slot, people: selection.people, adults: selection.adults, children: selection.children, guests: selection.guests, extras: selection.extras, extrasTotal: selection.extrasTotal, preorderItems: selection.preorderItems, preferences: selection.preferences, parking: selection.parking, vehicles: selection.vehicles, parkingTotal: selection.parkingTotal, bundleCode: selection.bundleCode, bundleServices: selection.bundleServices, total: selection.total, payMode: mode, paymentMethod: method } }, true); 
+      }
+      await onPaid(result); 
+    } catch (cause) { 
+      setError(cause.message || "No se pudo registrar el pago"); 
+    } finally { 
+      setBusy(false); 
+    } 
+  }
   return <Page title="Confirma tu experiencia" subtitle="Revisa cada concepto y decide cuánto deseas pagar ahora." onBack={onBack}><JourneySteps current={3}/><section className="checkout-grid"><div><div className="card"><h2>1. ¿Cómo deseas reservar?</h2><button type="button" className={`pay-choice ${mode === "FULL" ? "selected" : ""}`} onClick={() => setMode("FULL")}><b>Pagar el total · S/ {Number(selection.total).toFixed(2)}</b><small>La reserva queda pagada. El QR estará listo, pero se activará cuando el personal valide tu ingreso.</small></button><button type="button" className={`pay-choice ${mode === "HALF" ? "selected" : ""}`} onClick={() => setMode("HALF")}><b>Reservar con 50% · S/ {(selection.total / 2).toFixed(2)}</b><small>Separa fecha, habitación o cupo. Podrás completar el saldo desde tu QR o tus reservas.</small></button></div><div className="card"><h2>2. Método de pago</h2><PaymentMethods value={method} onChange={setMethod}/>{cash ? <Info icon={Banknote} title="Pago pendiente en Recepción" text="No se marcará como pagado hasta que Caja reciba y valide el efectivo. Podrás cambiar luego a un método digital."/> : null}</div></div><InvoiceSummary selection={selection} cash={cash} mode={mode}/></section>{error ? <p className="error">{error}</p> : null}<div className="checkout-action"><button className="primary wide" disabled={busy} onClick={pay}>{busy ? "Procesando…" : cash ? "Confirmar reserva pendiente de caja" : `Pagar S/ ${Number(due).toFixed(2)}`}</button></div><small className="center">Operación demostrativa: los estados, saldos, cupos y caja sí se registran en el ERP.</small></Page>;
 }
 
