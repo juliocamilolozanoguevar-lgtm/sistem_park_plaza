@@ -4,7 +4,7 @@ import { ExperienceFlow } from "./ExperienceFlows";
 import { ModernHome, ModernWelcome } from "./ModernExperience";
 import { apiBaseUrl } from "./config/api";
 import { connectCustomerRealtime, realtime } from "./api/realtime";
-import { getGuestProfile, loginCustomer, loginGuest } from "./api/authApi";
+import { getGuestProfile, loginCustomer, loginGuest, loginWithGoogle } from "./api/authApi";
 import { getEvents } from "./api/eventsApi";
 import { getConsumptions } from "./api/consumptionsApi";
 import { createOrder, getMenu, getOrders } from "./api/ordersApi";
@@ -149,9 +149,35 @@ export function App() {
   return (
     <div className={`customer-app ${screen === "welcome" ? "welcome-active" : ""}`}>
       {notice ? <div className="toast" onClick={() => setNotice("")}>{notice}</div> : null}
-      {screen === "welcome" ? <ModernWelcome onCredential={async (draftClient) => { if (draftClient) { try { const saved = await registerPublicCustomer(draftClient); activateClient(saved); } catch (error) { showError(error); return; } } go("home"); }} onRecover={() => go("recover")} /> : null}
+      {screen === "welcome" ? <ModernWelcome 
+  onCredential={async (draftClient) => { 
+    if (draftClient) { 
+      try { 
+        const saved = await registerPublicCustomer(draftClient); 
+        activateClient(saved); 
+      } catch (error) { 
+        showError(error); 
+        return; 
+      } 
+    } 
+    go("home"); 
+  }} 
+  onRecover={() => go("recover")} 
+  onGoogleCredential={async (credential) => {
+    try {
+      const session = await loginWithGoogle(credential);
+      const savedClient = { ...(session.client || {}), reservationDraftClient: true, customerScope: true };
+      localStorage.setItem("pp_customer_token", session.token);
+      localStorage.setItem("pp_customer_client", JSON.stringify(savedClient));
+      setClient(savedClient);
+      go("home");
+    } catch (error) {
+      showError(error);
+    }
+  }}
+/> : null}
       {screen === "identify" ? <Identify form={identityDraft} setForm={setIdentityDraft} onBack={() => go(identityNext === "checkout" || identityNext === "event-confirmation" ? "experience-flow" : "welcome")} onDone={completeIdentity} reservationFlow={identityNext === "checkout" || identityNext === "event-confirmation"} registrationFlow={(identityNext === "checkout" && selection?.service?.code === "HOSPEDAJE") || identityNext === "event-confirmation"} /> : null}
-      {screen === "recover" ? <RecoverReservation documentNumber={recoveryDocument} setDocumentNumber={setRecoveryDocument} onBack={() => go("welcome")} onDone={(value) => { activateClient(value.client); setExperience(value.experience); go("reservations"); }} /> : null}
+      {screen === "recover" ? <RecoverReservation documentNumber={recoveryDocument} setDocumentNumber={setRecoveryDocument} onBack={() => go("welcome")} onDone={(value) => { activateClient(value.client); setExperience(value.experience); go("home"); }} /> : null}
       {screen === "home" ? <ModernHome client={client} catalog={catalog} experience={experience} onService={(service) => { setSelection({ service }); go("experience-flow"); }} onExperience={() => go("experience")} onReservations={() => go("reservations")} onExit={() => resetExperience("welcome")} /> : null}
       {screen === "experience-flow" ? <ExperienceFlow service={selection?.service} catalog={catalog} hasExistingParking={Boolean((experience?.bookings || []).some((item) => (item.vehicles || []).length || item.parkingSpace || item.parkingSpaces?.length))} onBack={() => go("home")} onCheckout={(value) => { setSelection(value); continueWithCustomer("checkout"); }} onEventCheckout={(eventDraft) => { setSelection({ eventDraft }); continueWithCustomer("event-confirmation"); }} /> : null}
       {screen === "event-quote" ? <EventQuote catalog={catalog} onBack={() => go("home")} onDone={async (result) => { setPaymentResult({ event: result }); await refreshExperience(); go("event-success"); }} /> : null}
@@ -185,12 +211,12 @@ function RecoverReservation({ onBack, documentNumber, setDocumentNumber, onDone 
       const orders = await getOrders().catch(() => []);
       onDone({ client: savedClient, experience: { ...normalizeRecoveredExperience(recovered), orders } });
     } catch (cause) {
-      setError(cause.message || "No encontramos reservas con ese documento.");
+      setError(cause.message || "No encontramos una cuenta registrada con ese documento.");
     } finally {
       setBusy(false);
     }
   }
-  return <Page title="Recupera tu reserva" subtitle="Consulta tus reservas registradas en el hotel con tu documento." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Búsqueda en el sistema" text="Si el documento existe, mostraremos el titular y sus reservas guardadas."/><Field label="DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Revisando…" : "Recuperar mi reserva"}</button></form></Page>;
+  return <Page title="Ingresar por DNI" subtitle="Usa los datos del cliente que ya está registrado en la base de datos del hotel." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Cuenta registrada" text="Validaremos el documento en la base de datos. Si existe, abriremos la cuenta para revisar reservas o crear una nueva."/><Field label="DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Ingresando…" : "Ingresar con mis datos"}</button></form></Page>;
 }
 
 function Identify({ onBack, onDone, form, setForm, reservationFlow, registrationFlow }) {

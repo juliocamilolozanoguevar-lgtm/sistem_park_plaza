@@ -18,3 +18,11 @@ export async function loginCustomer(documentNumber, otp = "123456") {
 export async function getGuestProfile() {
   return request("/client/profile", {}, true);
 }
+
+export async function loginWithGoogle(credential) {
+  const result = await request("/customer/session/google", {
+    method: "POST",
+    body: { credential }
+  });
+  return result?.data || result;
+}
