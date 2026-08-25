@@ -2,13 +2,6 @@
 
 Sistema local para demostrar la experiencia conectada del cliente y la operación del hotel. Incluye una PWA para huéspedes, un ERP por roles, una API Express y persistencia PostgreSQL.
 
-## Servicios
-
-- Experiencia del cliente: http://localhost:4173
-- ERP del personal: http://localhost:5173
-- Estado de la API: http://localhost:3000/api/health
-- PostgreSQL: `localhost:5433`
-
 ## Levantar con Docker Desktop
 
 Desde esta carpeta:
