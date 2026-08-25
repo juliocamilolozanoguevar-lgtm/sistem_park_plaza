@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { defaultRouteByRole } from "../constants/menu";
-import logoParkPlaza from "../assets/park-plaza-mark.svg";
+import logoParkPlaza from "../assets/park-plaza-mark.jpg";
 
 export function Login() {
   const { login } = useAuth();

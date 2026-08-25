@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { menuSectionsByRole, permissionForHref } from "../constants/menu";
 import { useAuth } from "../context/AuthContext";
-import logoParkPlaza from "../assets/park-plaza-mark.svg";
+import logoParkPlaza from "../assets/park-plaza-mark.jpg";
 
 export function Sidebar({ open, onClose }) {
   const { user, hasPermission } = useAuth();
