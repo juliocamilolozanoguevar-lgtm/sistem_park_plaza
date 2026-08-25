@@ -77,7 +77,7 @@ export function ModernWelcome({ onCredential, onRecover, onGoogleCredential }) {
   </main>;
 }
 
-function Brand() { return <div className="ppx-brand"><img src="/brand/park-plaza-mark.svg" alt="Park Plaza"/><div><strong>PARK PLAZA</strong><span>LA MAGIA DE PUCALLPA</span></div></div>; }
+function Brand() { return <div className="ppx-brand"><img src="/brand/park-plaza-mark.jpg" alt="Park Plaza"/><div><strong>PARK PLAZA</strong><span>LA MAGIA DE PUCALLPA</span></div></div>; }
 function Entry({ icon: Icon, title, text, onClick, primary=false }) { return <button className={`ppx-entry ${primary ? "primary" : ""}`} type="button" onClick={onClick}><span><Icon/></span><div><strong>{title}</strong><small>{text}</small></div><ChevronRight/></button>; }
 function InfoLine({ children }) { return <p className="ppx-form-hint">{children}</p>; }
 
