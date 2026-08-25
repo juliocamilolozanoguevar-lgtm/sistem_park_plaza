@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { auth, googleProvider, signInWithPopup } from './config/firebase';
+import { auth, googleProvider, signInWithPopup } from "./config/firebase";
 import { ArrowLeft, BedDouble, CalendarDays, ChevronRight, ClipboardList, CreditCard, LogOut, Mail, MapPin, QrCode, ShieldCheck, Sparkles, SunMedium, Waves } from "lucide-react";
 
 const images = { HOSPEDAJE: "/images/experiences/hospedaje.webp", PISCINA: "/images/experiences/piscina.webp", MIRADOR: "/images/experiences/mirador.webp", EVENTOS: "/images/experiences/eventos.webp" };
@@ -15,31 +15,38 @@ export function ModernWelcome({ onCredential, onRecover, onGoogleCredential }) {
   const [active, setActive] = useState(0);
   const [registering, setRegistering] = useState(false);
   const [googleAccess, setGoogleAccess] = useState(false);
-  const [googleForm, setGoogleForm] = useState({ email: "", firstName: "", lastName: "" });
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleError, setGoogleError] = useState("");
   const [form, setForm] = useState({ documentType: "DNI", documentNumber: "", firstName: "", lastName: "", phone: "", email: "" });
   const current = welcomeExperiences[active];
   const advance = () => setActive((value) => (value + 1) % welcomeExperiences.length);
   const update = (field, value) => setForm((currentForm) => ({ ...currentForm, [field]: value }));
-  const updateGoogle = (field, value) => setGoogleForm((currentForm) => ({ ...currentForm, [field]: value }));
   const submit = (event) => {
     event.preventDefault();
     onCredential(form);
   };
   const submitGoogle = async (event) => {
-    if (event) event.preventDefault();
+    event.preventDefault();
+    setGoogleBusy(true);
+    setGoogleError("");
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
+      const idToken = await user.getIdToken();
+      const [firstName = "", ...lastNameParts] = (user.displayName || "").split(" ").filter(Boolean);
       onGoogleCredential?.({
-        provider: "google",
+        provider: "firebase-google",
+        idToken,
+        uid: user.uid,
         email: user.email,
-        given_name: user.displayName?.split(" ")[0] || "",
-        family_name: user.displayName?.split(" ").slice(1).join(" ") || "",
-        name: user.displayName || ""
+        given_name: firstName,
+        family_name: lastNameParts.join(" "),
+        name: user.displayName || user.email
       });
     } catch (error) {
-      console.error("Error en autenticación con Google:", error);
-      alert("No se pudo iniciar sesión con Google.");
+      setGoogleError(error?.message || "No se pudo iniciar sesión con Google.");
+    } finally {
+      setGoogleBusy(false);
     }
   };
 
@@ -63,7 +70,7 @@ export function ModernWelcome({ onCredential, onRecover, onGoogleCredential }) {
     <section className="ppx-entry-panel" id="welcome-actions">
       <div className="ppx-entry-heading"><div><small>EXPERIENCIA PARK PLAZA</small><p>{registering ? googleAccess ? "Ingreso con Google" : "Datos del titular" : "¿Cómo deseas comenzar?"}</p></div><span className="ppx-auto-label">Cambio automático · 3 s</span></div>
       {registering && !googleAccess ? <form className="ppx-register-form" onSubmit={submit}>
-        <button className="ppx-register-submit google" type="button" onClick={submitGoogle}><Mail/> Ingresar con Google</button>
+        <button className="ppx-register-submit google" type="button" onClick={() => setGoogleAccess(true)}><Mail/> Ingresar con Google</button>
         <InfoLine>O completa tus datos para crear la cuenta cliente y realizar tu reserva.</InfoLine>
         <div className="ppx-doc-toggle"><button type="button" className={form.documentType === "DNI" ? "active" : ""} onClick={() => update("documentType", "DNI")}>DNI</button><button type="button" className={form.documentType !== "DNI" ? "active" : ""} onClick={() => update("documentType", "CE")}>CE</button></div>
         <label><span>Documento</span><input required value={form.documentNumber} onChange={(event) => update("documentNumber", event.target.value)} /></label>
@@ -72,6 +79,11 @@ export function ModernWelcome({ onCredential, onRecover, onGoogleCredential }) {
         <label><span>Correo</span><input required type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label>
         <button className="ppx-register-submit" type="submit">Guardar y elegir experiencia <ChevronRight/></button>
         <button className="ppx-register-back" type="button" onClick={() => setRegistering(false)}><ArrowLeft/> Volver</button>
+      </form> : registering && googleAccess ? <form className="ppx-register-form" onSubmit={submitGoogle}>
+        <InfoLine>Se abrirá la ventana oficial de Google. Firebase validará tu cuenta y el hotel guardará el cliente con ese correo.</InfoLine>
+        {googleError ? <p className="error">{googleError}</p> : null}
+        <button className="ppx-register-submit google" type="submit" disabled={googleBusy}><Mail/> {googleBusy ? "Conectando con Google..." : "Continuar con Google"}</button>
+        <button className="ppx-register-back" type="button" onClick={() => setGoogleAccess(false)}><ArrowLeft/> Volver a iniciar experiencia</button>
       </form> : <><Entry icon={CreditCard} title="Iniciar una experiencia" text="Regístrate o usa Google para reservar" onClick={() => { setRegistering(true); setGoogleAccess(false); }} primary/><Entry icon={ClipboardList} title="Ingresar por DNI" text="Usa los datos registrados en el hotel" onClick={onRecover}/></>}
     </section>
   </main>;

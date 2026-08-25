@@ -1,27 +1,18 @@
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB5A2nLykV2dmMoSV0aer6933-85HSCauo",
-  authDomain: "parkplaza-3b1e7.firebaseapp.com",
-  projectId: "parkplaza-3b1e7",
-  storageBucket: "parkplaza-3b1e7.firebasestorage.app",
-  messagingSenderId: "890547793187",
-  appId: "1:890547793187:web:7ea452fdd8f579ea9a3096",
-  measurementId: "G-W3RTZJDKRY"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB5A2nLykV2dmMoSV0aer6933-85HSCauo",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "parkplaza-3b1e7.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "parkplaza-3b1e7",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "parkplaza-3b1e7.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "890547793187",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:890547793187:web:7ea452fdd8f579ea9a3096"
 };
 
 const app = initializeApp(firebaseConfig);
-let analytics;
-// getAnalytics can fail in some environments (like node/SSR if not careful), 
-// but this is standard React SPA so we just initialize it safely
-try {
-  analytics = getAnalytics(app);
-} catch (e) {
-  console.warn("Analytics no pudo inicializarse", e);
-}
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
-export { app, analytics, auth, googleProvider, signInWithPopup };
+export { auth, googleProvider, signInWithPopup };
