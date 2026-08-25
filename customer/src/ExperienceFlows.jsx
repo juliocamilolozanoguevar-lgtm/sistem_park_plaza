@@ -151,12 +151,12 @@ function LodgingFlow({ service, catalog, hasExistingParking, onBack, onCheckout 
                   <Parking catalog={catalog} value={vehicles} setValue={setVehicles} hasExistingParking={hasExistingParking}/>
 
                   <section className={`master-bundle ${masterBundle ? "selected" : ""}`}>
-                    <div><small>OFERTA PARA HUÉSPEDES</small><h3>Llave Maestra Park Plaza</h3><p>Incluye tu hospedaje, Piscina y Mirador en un único QR. Puedes reservar cada servicio por separado si prefieres armar tu experiencia a tu manera.</p><span>Piscina desde 09:00 · Mirador desde 16:30</span></div>
+                    <div><small>OFERTA PARA HUÉSPEDES</small><h3>Paquete completo</h3><p>Incluye tu hospedaje, Piscina y Mirador en un único QR. Puedes reservar cada servicio por separado si prefieres armar tu experiencia a tu manera.</p><span>Piscina desde 09:00 · Mirador desde 16:30</span></div>
                     <button type="button" onClick={() => setMasterBundle(!masterBundle)}>{masterBundle ? "Paquete incluido" : "Agregar paquete"}</button>
                     {masterBundle ? <strong>Incluyes Piscina + Mirador · ahorro S/ {bundleDiscount.toFixed(2)}</strong> : null}
                   </section>
 
-                  <Summary lines={[[`${viewingRoom.type.name} ${viewingRoom.number} · ${nights} noche(s)`, base], [`Huéspedes · ${adults} adulto(s) y ${children} niño(s)`, 0], [`Mejoras · ${extras.length} seleccionada(s)`, extrasTotal], [`Cochera · ${vehicles.length} vehículo(s)`, parkingTotal], ...(masterBundle ? [["Llave Maestra · Piscina + Mirador", poolBundlePrice + lookoutBundlePrice], ["Ahorro del paquete", -bundleDiscount]] : [])]} total={total}/>
+                  <Summary lines={[[`${viewingRoom.type.name} ${viewingRoom.number} · ${nights} noche(s)`, base], [`Huéspedes · ${adults} adulto(s) y ${children} niño(s)`, 0], [`Mejoras · ${extras.length} seleccionada(s)`, extrasTotal], [`Cochera · ${vehicles.length} vehículo(s)`, parkingTotal], ...(masterBundle ? [["Paquete completo · Piscina + Mirador", poolBundlePrice + lookoutBundlePrice], ["Ahorro del paquete", -bundleDiscount]] : [])]} total={total}/>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
