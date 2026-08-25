@@ -84,7 +84,7 @@ export function ModernWelcome({ onCredential, onRecover, onGoogleCredential }) {
         {googleError ? <p className="error">{googleError}</p> : null}
         <button className="ppx-register-submit google" type="submit" disabled={googleBusy}><Mail/> {googleBusy ? "Conectando con Google..." : "Continuar con Google"}</button>
         <button className="ppx-register-back" type="button" onClick={() => setGoogleAccess(false)}><ArrowLeft/> Volver a iniciar experiencia</button>
-      </form> : <><Entry icon={CreditCard} title="Iniciar una experiencia" text="Regístrate o usa Google para reservar" onClick={() => { setRegistering(true); setGoogleAccess(false); }} primary/><Entry icon={ClipboardList} title="Ingresar por DNI" text="Usa los datos registrados en el hotel" onClick={onRecover}/></>}
+      </form> : <><Entry icon={CreditCard} title="Iniciar una experiencia" text="Regístrate o usa Google para reservar" onClick={() => { setRegistering(true); setGoogleAccess(false); }} primary/><Entry icon={ClipboardList} title="Ingresar a mi cuenta" text="Usa tu correo o DNI registrado" onClick={onRecover}/></>}
     </section>
   </main>;
 }

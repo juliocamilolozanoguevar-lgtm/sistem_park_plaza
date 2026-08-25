@@ -216,7 +216,7 @@ function RecoverReservation({ onBack, documentNumber, setDocumentNumber, onDone 
       setBusy(false);
     }
   }
-  return <Page title="Ingresar por DNI" subtitle="Usa los datos del cliente que ya está registrado en la base de datos del hotel." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Cuenta registrada" text="Validaremos el documento en la base de datos. Si existe, abriremos la cuenta para revisar reservas o crear una nueva."/><Field label="DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Ingresando…" : "Ingresar con mis datos"}</button></form></Page>;
+  return <Page title="Ingresar a mi cuenta" subtitle="Usa tu correo electrónico o documento de identidad registrado en el hotel." onBack={onBack}><form className="card form" onSubmit={submit}><Info icon={QrCode} title="Cuenta registrada" text="Validaremos tus datos. Si existen, abriremos tu cuenta para revisar reservas o crear una nueva."/><Field label="Correo, DNI o carnet de extranjería" value={documentNumber} onChange={setDocumentNumber}/>{error ? <p className="error">{error}</p> : null}<button className="primary wide" disabled={busy}>{busy ? "Ingresando…" : "Ingresar con mis datos"}</button></form></Page>;
 }
 
 function Identify({ onBack, onDone, form, setForm, reservationFlow, registrationFlow }) {
